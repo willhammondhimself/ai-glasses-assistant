@@ -1,0 +1,80 @@
+# JARVIS Phone Client Configuration
+# For Brilliant Labs Halo AR Glasses
+
+user:
+  name: "Will"
+  address: "sir"  # How JARVIS addresses you
+  locations:
+    - "Claremont, CA"
+    - "Santa Barbara, CA"
+  target_speed: 0.25  # Goal: 250ms response time
+
+hardware:
+  halo_mac_address: "XX:XX:XX:XX:XX:XX"  # Replace with your Halo's MAC
+  display:
+    width: 640
+    height: 400
+    fov_degrees: 20
+  battery:
+    low_threshold: 20
+    critical_threshold: 10
+
+voice:
+  model: "small.en"  # Whisper model: tiny.en, base.en, small.en
+  wake_words:
+    - "jarvis"
+    - "hey jarvis"
+    - "mental math"
+  tts_voice: "british_male"
+  tts_rate: 180  # Words per minute
+
+personality:
+  humor_level: "high"  # low, medium, high
+  formality: "butler"  # casual, professional, butler
+  encouragement: true
+  celebrate_streaks: true
+
+mental_math:
+  # Time targets in milliseconds (Jane Street calibrated)
+  time_targets:
+    1: 2000   # D1: 2 seconds
+    2: 4000   # D2: 4 seconds
+    3: 8000   # D3: 8 seconds
+    4: 12000  # D4: 12 seconds
+    5: 20000  # D5: 20 seconds
+  default_difficulty: 2
+  problem_types:
+    - multiplication
+    - division
+    - addition
+    - subtraction
+    - percentage
+    - squares
+  streak_milestones: [3, 5, 7, 10, 15, 20, 25, 50]
+
+edith:
+  enabled: true
+  scan_interval_seconds: 5
+  battery_saver_interval: 15  # When battery < 30%
+  detection_types:
+    - equations
+    - code
+    - text
+    - faces
+  stare_threshold_ms: 1500  # 1.5 seconds to trigger suggestion
+
+display:
+  # OLED burn-in prevention
+  pixel_shift_enabled: true
+  pixel_shift_interval_ms: 30000  # Shift every 30 seconds
+  pixel_shift_amount: 2  # Pixels to shift
+  dim_after_seconds: 60
+
+colors:
+  # Iron Man / JARVIS palette (RGB)
+  primary: [0, 255, 255]      # Cyan
+  accent: [50, 150, 255]      # Electric blue
+  success: [0, 255, 128]      # Green-cyan
+  warning: [255, 191, 0]      # Amber
+  error: [255, 64, 64]        # Red
+  text: [255, 255, 255]       # White

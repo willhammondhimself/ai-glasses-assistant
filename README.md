@@ -1,12 +1,12 @@
 # AI Glasses Assistant
 
-My personal AR glasses project for the Brilliant Labs Halo. Built this to prep for quant interviews at Jane Street/Citadel because staring at flashcards got old fast.
+My personal AR glasses project for the Brilliant Labs Halo. Built this to prep for quant interviews at Jane Street/Cit Sec/HRT because staring at flashcards got old fast.
 
-Think Iron Man's JARVIS meets Spider-Man's EDITH, but running on $300 smart glasses instead of a billion dollar suit.
+Think Iron Man's JARVIS meets Spider-Man's EDITH.
 
 ## What This Actually Does
 
-**Mental Math Mode** - Throws arithmetic at you with Jane Street-caliber time pressure. D1 problems give you 2 seconds, D5 gives you 20. Miss the window and JARVIS will let you know about it (politely, but firmly).
+**Mental Math Mode** - Throws arithmetic at you with quant-trader mental-math interview time pressure. D1 problems give you 2 seconds, D5 gives you 20. Miss the window and JARVIS will let you know about it (politely, but firmly).
 
 **Poker Mode** - Point at cards, get GTO analysis. Uses Claude to break down preflop ranges, pot odds, bet sizing. Useful for home games when you're trying to figure out if that river shove is a bluff.
 
@@ -16,7 +16,7 @@ Think Iron Man's JARVIS meets Spider-Man's EDITH, but running on $300 smart glas
 
 ## The JARVIS Thing
 
-I got tired of robotic AI responses, so everything goes through a personality layer that makes it sound like you have Tony Stark's butler in your ear:
+I got tired of robotic AI responses, so everything goes through a personality layer that makes it sound like you have Tony Stark's Assistant in your ear:
 
 - "2.3s - that's Jane Street caliber, sir."
 - "The correct answer was 847. Onward."
@@ -73,9 +73,9 @@ Should work with any AR glasses that can run Python and connect to a backend, bu
 
 ## Why
 
-I'm a physics/math/CS student prepping for quant trading interviews. The mental math rounds at these places are brutal - you get like 8 minutes to answer 80 arithmetic questions. Drilling on a laptop got boring. Drilling while walking around campus with glasses is slightly less boring.
+I'm a physics/math/CS student prepping for quant trading interviews. The mental math rounds at these places are brutal- you get like 8 minutes to answer 80 arithmetic questions. Drilling on a laptop got boring. Drilling while walking around campus with glasses is slightly less boring.
 
-The poker thing started because I play home games and wanted to actually understand ranges instead of just vibing. EDITH was just me wanting to feel like Spider-Man honestly.
+The poker thing started because I play home games and wanted to actually understand ranges instead of just vibing. EDITH was just me wanting to feel like Peter Parker with his glasses honestly.
 
 ## Status
 
@@ -100,4 +100,4 @@ Things that don't work yet:
 
 ## License
 
-It's a personal project, do whatever you want with it. If you're also prepping for Jane Street, good luck - we're all gonna need it.
+It's a personal project, do whatever you want with it. If you're also prepping for quant interviews, try it out!
