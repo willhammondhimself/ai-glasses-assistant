@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WHAM Dashboard</title>
+    <link rel="stylesheet" href="/static/dashboard.css">
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="header-left">
+            <h1 class="logo">WHAM</h1>
+            <span class="mode-indicator" id="modeIndicator">Idle</span>
+        </div>
+        <div class="header-center">
+            <div class="stat-pill">
+                <span class="stat-icon">🔋</span>
+                <span id="batteryLevel">85%</span>
+            </div>
+            <div class="stat-pill cost-pill">
+                <span class="stat-icon">💰</span>
+                <span id="todayCost">$0.00</span>
+                <span class="cost-budget">/ $5.00</span>
+            </div>
+        </div>
+        <div class="header-right">
+            <button class="action-btn" onclick="startFocus()">🎯 Focus</button>
+            <button class="action-btn" onclick="openCaptureModal()">📝 Capture</button>
+            <button class="action-btn secondary" onclick="startPoker()">🎰 Poker</button>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Tab Navigation -->
+        <nav class="tabs">
+            <button class="tab active" data-tab="today">Today</button>
+            <button class="tab" data-tab="analytics">Analytics</button>
+            <button class="tab" data-tab="captures">Captures</button>
+            <button class="tab" data-tab="memory">Memory</button>
+            <button class="tab" data-tab="opponents">Opponents</button>
+        </nav>
+
+        <!-- Tab: Today -->
+        <section class="tab-content active" id="tab-today">
+            <div class="grid-2">
+                <!-- Timeline -->
+                <div class="card">
+                    <h2 class="card-title">Activity Timeline</h2>
+                    <div class="timeline" id="activityTimeline">
+                        <div class="loading">Loading activities...</div>
+                    </div>
+                </div>
+
+                <!-- Right Column -->
+                <div class="stack">
+                    <!-- Daily Challenges -->
+                    <div class="card">
+                        <h2 class="card-title">Daily Challenges</h2>
+                        <div id="challengesList">
+                            <div class="loading">Loading challenges...</div>
+                        </div>
+                        <div class="xp-bar">
+                            <div class="xp-progress" id="xpProgress" style="width: 0%"></div>
+                        </div>
+                        <div class="xp-info">
+                            <span id="xpLevel">Level 1</span>
+                            <span id="xpAmount">0 XP</span>
+                        </div>
+                    </div>
+
+                    <!-- Recent Captures -->
+                    <div class="card">
+                        <h2 class="card-title">Recent Captures</h2>
+                        <div id="recentCaptures">
+                            <div class="loading">Loading captures...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tab: Analytics -->
+        <section class="tab-content" id="tab-analytics">
+            <div class="grid-2">
+                <!-- Cost Chart -->
+                <div class="card">
+                    <h2 class="card-title">Cost (7 Days)</h2>
+                    <canvas id="costChart" height="200"></canvas>
+                </div>
+
+                <!-- XP Progress -->
+                <div class="card">
+                    <h2 class="card-title">XP Progress</h2>
+                    <div class="big-stat">
+                        <span class="big-number" id="totalXP">0</span>
+                        <span class="big-label">Total XP</span>
+                    </div>
+                    <div class="stats-row">
+                        <div class="stat-item">
+                            <span class="stat-value" id="streakDays">0</span>
+                            <span class="stat-label">Day Streak</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-value" id="achievements">0</span>
+                            <span class="stat-label">Achievements</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Focus Stats -->
+                <div class="card">
+                    <h2 class="card-title">Focus Stats</h2>
+                    <div class="stats-row">
+                        <div class="stat-item">
+                            <span class="stat-value" id="focusMinutes">0</span>
+                            <span class="stat-label">Minutes</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-value" id="focusSessions">0</span>
+                            <span class="stat-label">Sessions</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Poker Stats -->
+                <div class="card">
+                    <h2 class="card-title">Poker Stats</h2>
+                    <div class="stats-row">
+                        <div class="stat-item">
+                            <span class="stat-value" id="pokerHands">0</span>
+                            <span class="stat-label">Hands</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-value" id="pokerProfit">$0</span>
+                            <span class="stat-label">Profit</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-value" id="pokerVPIP">0%</span>
+                            <span class="stat-label">VPIP</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tab: Captures -->
+        <section class="tab-content" id="tab-captures">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">All Captures</h2>
+                    <div class="filter-row">
+                        <input type="text" id="captureSearch" placeholder="Search captures..." class="search-input">
+                        <select id="captureFilter" class="filter-select">
+                            <option value="">All Categories</option>
+                            <option value="work">Work</option>
+                            <option value="personal">Personal</option>
+                            <option value="idea">Ideas</option>
+                            <option value="urgent">Urgent</option>
+                            <option value="poker">Poker</option>
+                        </select>
+                    </div>
+                </div>
+                <table class="data-table" id="capturesTable">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Content</th>
+                            <th>Tags</th>
+                            <th>Priority</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="capturesBody">
+                        <tr><td colspan="5" class="loading">Loading captures...</td></tr>
+                    </tbody>
+                </table>
+                <div class="pagination">
+                    <button id="prevCaptures" disabled>← Previous</button>
+                    <span id="capturesPage">Page 1</span>
+                    <button id="nextCaptures">Next →</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tab: Memory -->
+        <section class="tab-content" id="tab-memory">
+            <div class="grid-2">
+                <!-- Memory Search -->
+                <div class="card">
+                    <h2 class="card-title">Search Memory</h2>
+                    <div class="query-box">
+                        <input type="text" id="memoryQuery" placeholder="What do you know about..." class="query-input">
+                        <button onclick="searchMemory()" class="query-btn">Search</button>
+                    </div>
+                    <div id="memoryResults">
+                        <p class="hint">Try searching for a person, topic, or keyword</p>
+                    </div>
+                </div>
+
+                <!-- Memory Stats -->
+                <div class="card">
+                    <h2 class="card-title">Memory Stats</h2>
+                    <div class="stats-row">
+                        <div class="stat-item">
+                            <span class="stat-value" id="totalMemories">0</span>
+                            <span class="stat-label">Memories</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-value" id="totalEntities">0</span>
+                            <span class="stat-label">Entities</span>
+                        </div>
+                    </div>
+                    <h3 class="subsection-title">By Category</h3>
+                    <div id="memoryCategories"></div>
+                </div>
+
+                <!-- Add Memory -->
+                <div class="card span-2">
+                    <h2 class="card-title">Add Memory</h2>
+                    <form id="addMemoryForm" onsubmit="addMemory(event)">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Key</label>
+                                <input type="text" id="memoryKey" placeholder="e.g., sarah_email" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Category</label>
+                                <select id="memoryCategory">
+                                    <option value="fact">Fact</option>
+                                    <option value="preference">Preference</option>
+                                    <option value="contact">Contact</option>
+                                    <option value="location">Location</option>
+                                    <option value="habit">Habit</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Value</label>
+                            <textarea id="memoryValue" placeholder="The information to remember..." required></textarea>
+                        </div>
+                        <button type="submit" class="action-btn">Store Memory</button>
+                    </form>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tab: Opponents -->
+        <section class="tab-content" id="tab-opponents">
+            <div class="card">
+                <h2 class="card-title">Poker Opponents</h2>
+                <table class="data-table" id="opponentsTable">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>VPIP</th>
+                            <th>PFR</th>
+                            <th>Aggression</th>
+                            <th>Hands</th>
+                            <th>Type</th>
+                            <th>Last Seen</th>
+                        </tr>
+                    </thead>
+                    <tbody id="opponentsBody">
+                        <tr><td colspan="7" class="empty">No opponents tracked yet. Start a poker session to track opponents.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <!-- Quick Capture Modal -->
+    <div class="modal" id="captureModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Quick Capture</h2>
+                <button class="close-btn" onclick="closeCaptureModal()">&times;</button>
+            </div>
+            <form id="quickCaptureForm" onsubmit="submitCapture(event)">
+                <div class="form-group">
+                    <textarea id="captureText" placeholder="What's on your mind?" required autofocus></textarea>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Type</label>
+                        <select id="captureType">
+                            <option value="note">Note</option>
+                            <option value="todo">Todo</option>
+                            <option value="idea">Idea</option>
+                            <option value="reminder">Reminder</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Priority</label>
+                        <select id="capturePriority">
+                            <option value="normal">Normal</option>
+                            <option value="low">Low</option>
+                            <option value="high">High</option>
+                            <option value="urgent">Urgent</option>
+                        </select>
+                    </div>
+                </div>
+                <button type="submit" class="action-btn full-width">Save Capture</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="footer-left">
+            <span class="status-indicator online"></span>
+            <span id="systemStatus">System Online</span>
+        </div>
+        <div class="footer-center">
+            <span id="dbSize">DB: -- MB</span>
+            <span id="uptime">Uptime: --</span>
+        </div>
+        <div class="footer-right">
+            <span>WHAM Dashboard v1.0</span>
+        </div>
+    </footer>
+
+    <script src="/static/dashboard.js"></script>
+</body>
+</html>

@@ -270,9 +270,6 @@ class WHAMPersonality:
         return self.stats.phase == SessionPhase.STRUGGLING
 
 
-# Alias for backwards compatibility
-JarvisPersonality = WHAMPersonality
-
 
 # Test
 if __name__ == "__main__":

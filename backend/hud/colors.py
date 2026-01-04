@@ -1,7 +1,7 @@
 """
 Iron Man HUD Color System
 
-JARVIS-inspired color palette for AR glasses display.
+WHAM color palette for AR glasses display.
 Optimized for OLED visibility and eye comfort.
 """
 
@@ -42,10 +42,10 @@ class HUDColorScheme:
 
 
 # ============================================================================
-# JARVIS Iron Man Color Palette
+# WHAM Color Palette
 # ============================================================================
 
-JARVIS_COLORS = HUDColorScheme(
+WHAM_COLORS = HUDColorScheme(
     # Primary cyan family (Iron Man HUD signature)
     primary=(0, 255, 255),           # #00FFFF - Bright cyan
     primary_dim=(0, 180, 200),       # Dimmed for less important elements
@@ -117,20 +117,20 @@ def get_timer_color(elapsed_ms: int, target_ms: int) -> RGB:
     - 90-100%+: Red (danger/overtime)
     """
     if target_ms <= 0:
-        return JARVIS_COLORS.primary
+        return WHAM_COLORS.primary
 
     ratio = elapsed_ms / target_ms
 
     if ratio <= TIMER_THRESHOLDS["safe"]:
         # Pure cyan - plenty of time
-        return JARVIS_COLORS.primary
+        return WHAM_COLORS.primary
 
     elif ratio <= TIMER_THRESHOLDS["caution"]:
         # Transition cyan -> amber
         t = (ratio - 0.5) / 0.25  # 0 to 1 over this range
         return _interpolate_color(
-            JARVIS_COLORS.primary,
-            JARVIS_COLORS.warning,
+            WHAM_COLORS.primary,
+            WHAM_COLORS.warning,
             t
         )
 
@@ -138,14 +138,14 @@ def get_timer_color(elapsed_ms: int, target_ms: int) -> RGB:
         # Transition amber -> red (starting)
         t = (ratio - 0.75) / 0.15
         return _interpolate_color(
-            JARVIS_COLORS.warning,
-            JARVIS_COLORS.error,
+            WHAM_COLORS.warning,
+            WHAM_COLORS.error,
             t * 0.5  # Only go halfway to red
         )
 
     else:
         # Red - time's up or overtime
-        return JARVIS_COLORS.error
+        return WHAM_COLORS.error
 
 
 def _interpolate_color(start: RGB, end: RGB, t: float) -> RGB:
@@ -180,13 +180,13 @@ def get_streak_color(streak: int) -> Tuple[RGB, str]:
         Tuple of (color, tier_name)
     """
     if streak < 3:
-        return JARVIS_COLORS.text_secondary, "none"
+        return WHAM_COLORS.text_secondary, "none"
 
     for tier_name, (threshold, color) in reversed(STREAK_TIERS.items()):
         if streak >= threshold:
             return color, tier_name
 
-    return JARVIS_COLORS.text_secondary, "none"
+    return WHAM_COLORS.text_secondary, "none"
 
 
 # ============================================================================
@@ -204,13 +204,13 @@ def get_accuracy_color(accuracy: float) -> RGB:
         RGB color tuple
     """
     if accuracy >= 95:
-        return JARVIS_COLORS.success
+        return WHAM_COLORS.success
     elif accuracy >= 85:
-        return JARVIS_COLORS.primary
+        return WHAM_COLORS.primary
     elif accuracy >= 70:
-        return JARVIS_COLORS.warning
+        return WHAM_COLORS.warning
     else:
-        return JARVIS_COLORS.error
+        return WHAM_COLORS.error
 
 
 # ============================================================================
@@ -219,14 +219,14 @@ def get_accuracy_color(accuracy: float) -> RGB:
 
 SPEED_TIER_COLORS: Dict[str, RGB] = {
     "exceptional": (255, 215, 0),   # Gold - Jane Street caliber
-    "excellent": JARVIS_COLORS.success,  # Green
-    "good": JARVIS_COLORS.primary,       # Cyan
-    "needs_work": JARVIS_COLORS.warning, # Amber
+    "excellent": WHAM_COLORS.success,  # Green
+    "good": WHAM_COLORS.primary,       # Cyan
+    "needs_work": WHAM_COLORS.warning, # Amber
 }
 
 def get_speed_tier_color(tier: str) -> RGB:
     """Get color for speed performance tier."""
-    return SPEED_TIER_COLORS.get(tier, JARVIS_COLORS.text_secondary)
+    return SPEED_TIER_COLORS.get(tier, WHAM_COLORS.text_secondary)
 
 
 # ============================================================================
@@ -243,7 +243,7 @@ DIFFICULTY_COLORS: Dict[int, RGB] = {
 
 def get_difficulty_color(difficulty: int) -> RGB:
     """Get color for difficulty level indicator."""
-    return DIFFICULTY_COLORS.get(difficulty, JARVIS_COLORS.text_secondary)
+    return DIFFICULTY_COLORS.get(difficulty, WHAM_COLORS.text_secondary)
 
 
 # ============================================================================

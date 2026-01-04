@@ -2,7 +2,7 @@
 WebSocket Handlers for AR Glasses Modes
 
 Specialized handlers for different AR modes:
-- Mental Math speed run with JARVIS personality
+- Mental Math speed run with WHAM personality
 - Camera solve (future)
 - Code debug (future)
 """
@@ -23,7 +23,7 @@ from backend.formatters.quant_formatter import (
     format_problem_for_ws,
     format_result_for_ws,
 )
-from backend.jarvis import JarvisPersonality
+from backend.wham import WHAMPersonality
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +44,7 @@ class MentalMathSession:
 
 class MentalMathHandler(WebSocketHandler):
     """
-    Handler for mental math speed run mode with JARVIS personality.
+    Handler for mental math speed run mode with WHAM personality.
 
     Protocol:
     Client sends:
@@ -56,7 +56,7 @@ class MentalMathHandler(WebSocketHandler):
 
     Server sends:
     - {"type": "problem", "problem": "47 × 83", ...}
-    - {"type": "result", "correct": true, "time_ms": 2340, "jarvis": {...}}
+    - {"type": "result", "correct": true, "time_ms": 2340, "wham": {...}}
     - {"type": "timer", "remaining_ms": 5000}
     - {"type": "stats", ...}
     """
@@ -65,7 +65,7 @@ class MentalMathHandler(WebSocketHandler):
         super().__init__()
         self.sessions: Dict[str, MentalMathSession] = {}
         self.timer_tasks: Dict[str, asyncio.Task] = {}
-        self.jarvis_instances: Dict[str, JarvisPersonality] = {}
+        self.wham_instances: Dict[str, WHAMPersonality] = {}
         self.slide_builder = QuantSlideBuilder()
         self._engine = None  # Lazy load
 
@@ -91,28 +91,28 @@ class MentalMathHandler(WebSocketHandler):
         action = data.get("action", "")
         session_id = topic.split(":")[-1] if ":" in topic else topic
 
-        # Get or create session and JARVIS instance
+        # Get or create session and WHAM instance
         if session_id not in self.sessions:
             self.sessions[session_id] = MentalMathSession(session_id=session_id)
-            self.jarvis_instances[session_id] = JarvisPersonality(
+            self.wham_instances[session_id] = WHAMPersonality(
                 user_name="Will",
                 preferred_address="sir"
             )
 
         session = self.sessions[session_id]
-        jarvis = self.jarvis_instances.get(session_id)
+        wham = self.wham_instances.get(session_id)
 
         try:
             if action == "start":
-                await self._handle_start(websocket, session, jarvis, data)
+                await self._handle_start(websocket, session, wham, data)
             elif action == "answer":
-                await self._handle_answer(websocket, session, jarvis, data)
+                await self._handle_answer(websocket, session, wham, data)
             elif action == "skip":
-                await self._handle_skip(websocket, session, jarvis)
+                await self._handle_skip(websocket, session, wham)
             elif action == "stats":
-                await self._send_stats(websocket, session, jarvis)
+                await self._send_stats(websocket, session, wham)
             elif action == "end":
-                await self._handle_end(websocket, session, jarvis)
+                await self._handle_end(websocket, session, wham)
             elif action == "ping":
                 await websocket.send_json({"type": "pong"})
             else:
@@ -131,25 +131,25 @@ class MentalMathHandler(WebSocketHandler):
         self,
         websocket: WebSocket,
         session: MentalMathSession,
-        jarvis: JarvisPersonality,
+        wham: WHAMPersonality,
         data: dict
     ):
-        """Start a new problem with JARVIS greeting on first problem."""
+        """Start a new problem with WHAM greeting on first problem."""
         # Update difficulty if provided
         if "difficulty" in data:
             session.difficulty = max(1, min(5, data["difficulty"]))
-            if jarvis:
-                jarvis.context.current_difficulty = session.difficulty
+            if wham:
+                wham.context.current_difficulty = session.difficulty
 
         # Cancel any existing timer
         await self._cancel_timer(session.session_id)
 
         # Send greeting on first problem
-        if session.total_count == 0 and jarvis:
-            greeting = jarvis.greet()
-            mode_msg = jarvis.start_mode("mental_math")
+        if session.total_count == 0 and wham:
+            greeting = wham.greet()
+            mode_msg = wham.start_mode("mental_math")
             await websocket.send_json({
-                "type": "jarvis",
+                "type": "wham",
                 "message": greeting,
                 "mode_activation": mode_msg,
             })
@@ -164,9 +164,9 @@ class MentalMathHandler(WebSocketHandler):
         session.current_problem = problem_data
         session.problem_start_time = time.time()
 
-        # Track in JARVIS context
-        if jarvis:
-            jarvis.context.start_problem(problem_data)
+        # Track in WHAM context
+        if wham:
+            wham.context.start_problem(problem_data)
 
         # Send problem to client
         ws_problem = format_problem_for_ws(
@@ -189,10 +189,10 @@ class MentalMathHandler(WebSocketHandler):
         self,
         websocket: WebSocket,
         session: MentalMathSession,
-        jarvis: JarvisPersonality,
+        wham: WHAMPersonality,
         data: dict
     ):
-        """Handle answer submission with JARVIS personality feedback."""
+        """Handle answer submission with WHAM personality feedback."""
         if not session.current_problem:
             await websocket.send_json({
                 "type": "error",
@@ -222,17 +222,17 @@ class MentalMathHandler(WebSocketHandler):
         else:
             session.current_streak = 0
 
-        # Get JARVIS feedback
-        jarvis_response = None
-        if jarvis:
-            jarvis_response = jarvis.process_answer(
+        # Get WHAM feedback
+        wham_response = None
+        if wham:
+            wham_response = wham.process_answer(
                 user_answer=str(user_answer),
                 correct_answer=str(correct_answer),
                 difficulty=session.difficulty,
                 category=session.current_problem.get("category", "mental_math")
             )
 
-        # Send result with JARVIS enhancement
+        # Send result with WHAM enhancement
         result = format_result_for_ws(
             correct=correct,
             user_answer=user_answer,
@@ -246,14 +246,14 @@ class MentalMathHandler(WebSocketHandler):
             if session.total_count > 0 else 0
         )
 
-        # Add JARVIS personality data
-        if jarvis_response:
-            result["jarvis"] = {
-                "feedback": jarvis_response.get("feedback"),
-                "speed_tier": jarvis_response.get("speed_tier"),
-                "streak_message": jarvis_response.get("streak_message"),
-                "milestone_message": jarvis_response.get("milestone_message"),
-                "suggestions": jarvis_response.get("suggestions", []),
+        # Add WHAM personality data
+        if wham_response:
+            result["wham"] = {
+                "feedback": wham_response.get("feedback"),
+                "speed_tier": wham_response.get("speed_tier"),
+                "streak_message": wham_response.get("streak_message"),
+                "milestone_message": wham_response.get("milestone_message"),
+                "suggestions": wham_response.get("suggestions", []),
             }
 
         await websocket.send_json(result)
@@ -266,7 +266,7 @@ class MentalMathHandler(WebSocketHandler):
         self,
         websocket: WebSocket,
         session: MentalMathSession,
-        jarvis: JarvisPersonality
+        wham: WHAMPersonality
     ):
         """Handle skipping current problem."""
         await self._cancel_timer(session.session_id)
@@ -276,9 +276,9 @@ class MentalMathHandler(WebSocketHandler):
             session.current_streak = 0
             session.total_count += 1
 
-            # Record in JARVIS as incorrect (skip = fail)
-            if jarvis:
-                jarvis.context.record_answer(
+            # Record in WHAM as incorrect (skip = fail)
+            if wham:
+                wham.context.record_answer(
                     correct=False,
                     difficulty=session.difficulty,
                     category="mental_math"
@@ -288,7 +288,7 @@ class MentalMathHandler(WebSocketHandler):
                 "type": "skipped",
                 "correct_answer": session.current_problem.get("answer"),
                 "streak": 0,
-                "jarvis": {
+                "wham": {
                     "feedback": f"Skipped. The answer was {session.current_problem.get('answer')}. Onward, sir."
                 }
             })
@@ -300,9 +300,9 @@ class MentalMathHandler(WebSocketHandler):
         self,
         websocket: WebSocket,
         session: MentalMathSession,
-        jarvis: JarvisPersonality
+        wham: WHAMPersonality
     ):
-        """Send session statistics with JARVIS insights."""
+        """Send session statistics with WHAM insights."""
         stats_data = {
             "type": "stats",
             "correct": session.correct_count,
@@ -317,14 +317,14 @@ class MentalMathHandler(WebSocketHandler):
             "duration_seconds": (datetime.utcnow() - session.started_at).total_seconds()
         }
 
-        # Add JARVIS insights
-        if jarvis:
-            insights = jarvis.get_performance_insights()
-            phase_message = jarvis.get_phase_aware_message()
-            stats_data["jarvis"] = {
+        # Add WHAM insights
+        if wham:
+            insights = wham.get_performance_insights()
+            phase_message = wham.get_phase_aware_message()
+            stats_data["wham"] = {
                 "phase_message": phase_message,
                 "insights": insights,
-                "current_stats": jarvis.get_current_stats()
+                "current_stats": wham.get_current_stats()
             }
 
         await websocket.send_json(stats_data)
@@ -333,15 +333,15 @@ class MentalMathHandler(WebSocketHandler):
         self,
         websocket: WebSocket,
         session: MentalMathSession,
-        jarvis: JarvisPersonality
+        wham: WHAMPersonality
     ):
-        """End the session with JARVIS summary."""
+        """End the session with WHAM summary."""
         await self._cancel_timer(session.session_id)
 
-        # Get JARVIS session summary
-        jarvis_summary = None
-        if jarvis:
-            jarvis_summary = jarvis.end_session()
+        # Get WHAM session summary
+        wham_summary = None
+        if wham:
+            wham_summary = wham.end_session()
 
         # Send final stats
         end_data = {
@@ -356,20 +356,20 @@ class MentalMathHandler(WebSocketHandler):
             "duration_seconds": (datetime.utcnow() - session.started_at).total_seconds()
         }
 
-        if jarvis_summary:
-            end_data["jarvis"] = {
-                "message": jarvis_summary.get("message"),
-                "summary": jarvis_summary.get("summary"),
-                "motivation": jarvis.get_jane_street_motivation()
+        if wham_summary:
+            end_data["wham"] = {
+                "message": wham_summary.get("message"),
+                "summary": wham_summary.get("summary"),
+                "motivation": wham.get_jane_street_motivation()
             }
 
         await websocket.send_json(end_data)
 
-        # Clean up session and JARVIS instance
+        # Clean up session and WHAM instance
         if session.session_id in self.sessions:
             del self.sessions[session.session_id]
-        if session.session_id in self.jarvis_instances:
-            del self.jarvis_instances[session.session_id]
+        if session.session_id in self.wham_instances:
+            del self.wham_instances[session.session_id]
 
     async def _timer_loop(
         self,
@@ -445,8 +445,8 @@ class MentalMathHandler(WebSocketHandler):
         await self._cancel_timer(session_id)
         if session_id in self.sessions:
             del self.sessions[session_id]
-        if session_id in self.jarvis_instances:
-            del self.jarvis_instances[session_id]
+        if session_id in self.wham_instances:
+            del self.wham_instances[session_id]
 
 
 class MockMentalMathEngine:
@@ -489,7 +489,7 @@ mental_math_handler = MentalMathHandler()
 
 class PokerHandler(WebSocketHandler):
     """
-    Handler for Poker GTO analysis mode with JARVIS personality.
+    Handler for Poker GTO analysis mode with WHAM personality.
 
     Protocol:
     Client sends:
@@ -499,14 +499,14 @@ class PokerHandler(WebSocketHandler):
     - {"action": "sizing", "situation": {...}}     - Get bet sizing advice
 
     Server sends:
-    - {"type": "analysis", "recommendation": ..., "jarvis": {...}}
-    - {"type": "pot_odds", "odds": ..., "jarvis": {...}}
-    - {"type": "range", "range": ..., "jarvis": {...}}
+    - {"type": "analysis", "recommendation": ..., "wham": {...}}
+    - {"type": "pot_odds", "odds": ..., "wham": {...}}
+    - {"type": "range", "range": ..., "wham": {...}}
     """
 
     def __init__(self):
         super().__init__()
-        self.jarvis_instances: Dict[str, JarvisPersonality] = {}
+        self.wham_instances: Dict[str, WHAMPersonality] = {}
         self._engine = None
 
     def _get_engine(self):
@@ -531,29 +531,29 @@ class PokerHandler(WebSocketHandler):
         action = data.get("action", "")
         session_id = topic.split(":")[-1] if ":" in topic else topic
 
-        # Get or create JARVIS instance
-        if session_id not in self.jarvis_instances:
-            self.jarvis_instances[session_id] = JarvisPersonality(
+        # Get or create WHAM instance
+        if session_id not in self.wham_instances:
+            self.wham_instances[session_id] = WHAMPersonality(
                 user_name="Will",
                 preferred_address="sir"
             )
-        jarvis = self.jarvis_instances[session_id]
+        wham = self.wham_instances[session_id]
 
         try:
             if action == "analyze":
-                await self._handle_analyze(websocket, jarvis, data)
+                await self._handle_analyze(websocket, wham, data)
             elif action == "pot_odds":
-                await self._handle_pot_odds(websocket, jarvis, data)
+                await self._handle_pot_odds(websocket, wham, data)
             elif action == "range":
-                await self._handle_range(websocket, jarvis, data)
+                await self._handle_range(websocket, wham, data)
             elif action == "sizing":
-                await self._handle_sizing(websocket, jarvis, data)
+                await self._handle_sizing(websocket, wham, data)
             elif action == "start":
-                # Send JARVIS greeting for poker mode
-                greeting = jarvis.greet()
-                mode_msg = jarvis.start_mode("poker")
+                # Send WHAM greeting for poker mode
+                greeting = wham.greet()
+                mode_msg = wham.start_mode("poker")
                 await websocket.send_json({
-                    "type": "jarvis",
+                    "type": "wham",
                     "message": greeting,
                     "mode_activation": mode_msg,
                 })
@@ -572,7 +572,7 @@ class PokerHandler(WebSocketHandler):
     async def _handle_analyze(
         self,
         websocket: WebSocket,
-        jarvis: JarvisPersonality,
+        wham: WHAMPersonality,
         data: dict
     ):
         """Handle hand analysis request."""
@@ -587,8 +587,8 @@ class PokerHandler(WebSocketHandler):
         hand_info = data.get("hand_info", {})
         result = engine.analyze_hand(hand_info)
 
-        # Add JARVIS commentary
-        jarvis_comment = self._generate_poker_jarvis_comment(result)
+        # Add WHAM commentary
+        wham_comment = self._generate_poker_wham_comment(result)
 
         await websocket.send_json({
             "type": "analysis",
@@ -597,15 +597,15 @@ class PokerHandler(WebSocketHandler):
             "ev_estimate": result.get("ev_estimate"),
             "range_analysis": result.get("range_analysis"),
             "error": result.get("error"),
-            "jarvis": {
-                "message": jarvis_comment,
+            "wham": {
+                "message": wham_comment,
             }
         })
 
     async def _handle_pot_odds(
         self,
         websocket: WebSocket,
-        jarvis: JarvisPersonality,
+        wham: WHAMPersonality,
         data: dict
     ):
         """Handle pot odds calculation."""
@@ -626,7 +626,7 @@ class PokerHandler(WebSocketHandler):
         await websocket.send_json({
             "type": "pot_odds",
             **result,
-            "jarvis": {
+            "wham": {
                 "message": f"The math is clear, sir. {result.get('explanation', '')}",
             }
         })
@@ -634,7 +634,7 @@ class PokerHandler(WebSocketHandler):
     async def _handle_range(
         self,
         websocket: WebSocket,
-        jarvis: JarvisPersonality,
+        wham: WHAMPersonality,
         data: dict
     ):
         """Handle preflop range request."""
@@ -655,7 +655,7 @@ class PokerHandler(WebSocketHandler):
         await websocket.send_json({
             "type": "range",
             **result,
-            "jarvis": {
+            "wham": {
                 "message": f"GTO range for {position}, sir. {result.get('description', '')}",
             }
         })
@@ -663,7 +663,7 @@ class PokerHandler(WebSocketHandler):
     async def _handle_sizing(
         self,
         websocket: WebSocket,
-        jarvis: JarvisPersonality,
+        wham: WHAMPersonality,
         data: dict
     ):
         """Handle bet sizing analysis."""
@@ -681,13 +681,13 @@ class PokerHandler(WebSocketHandler):
         await websocket.send_json({
             "type": "sizing",
             **result,
-            "jarvis": {
+            "wham": {
                 "message": f"Optimal sizing calculated, sir. {result.get('sizing_rationale', '')}",
             }
         })
 
-    def _generate_poker_jarvis_comment(self, analysis: dict) -> str:
-        """Generate JARVIS-style comment for poker analysis."""
+    def _generate_poker_wham_comment(self, analysis: dict) -> str:
+        """Generate WHAM-style comment for poker analysis."""
         rec = analysis.get("recommendation", "").lower() if analysis.get("recommendation") else ""
         ev = analysis.get("ev_estimate", "").lower() if analysis.get("ev_estimate") else ""
 
@@ -717,13 +717,13 @@ class PokerHandler(WebSocketHandler):
     ):
         """Clean up on disconnect."""
         session_id = topic.split(":")[-1] if ":" in topic else topic
-        if session_id in self.jarvis_instances:
-            del self.jarvis_instances[session_id]
+        if session_id in self.wham_instances:
+            del self.wham_instances[session_id]
 
 
 class CodeDebugHandler(WebSocketHandler):
     """
-    Handler for Code Debug mode with JARVIS personality.
+    Handler for Code Debug mode with WHAM personality.
 
     Protocol:
     Client sends:
@@ -732,14 +732,14 @@ class CodeDebugHandler(WebSocketHandler):
     - {"action": "fix", "error": "...", "code": "..."}
 
     Server sends:
-    - {"type": "analysis", "issues": [...], "jarvis": {...}}
-    - {"type": "explanation", "explanation": "...", "jarvis": {...}}
-    - {"type": "fix", "suggestion": "...", "jarvis": {...}}
+    - {"type": "analysis", "issues": [...], "wham": {...}}
+    - {"type": "explanation", "explanation": "...", "wham": {...}}
+    - {"type": "fix", "suggestion": "...", "wham": {...}}
     """
 
     def __init__(self):
         super().__init__()
-        self.jarvis_instances: Dict[str, JarvisPersonality] = {}
+        self.wham_instances: Dict[str, WHAMPersonality] = {}
 
     async def handle_message(
         self,
@@ -752,29 +752,29 @@ class CodeDebugHandler(WebSocketHandler):
         action = data.get("action", "")
         session_id = topic.split(":")[-1] if ":" in topic else topic
 
-        # Get or create JARVIS instance
-        if session_id not in self.jarvis_instances:
-            self.jarvis_instances[session_id] = JarvisPersonality(
+        # Get or create WHAM instance
+        if session_id not in self.wham_instances:
+            self.wham_instances[session_id] = WHAMPersonality(
                 user_name="Will",
                 preferred_address="sir"
             )
-        jarvis = self.jarvis_instances[session_id]
+        wham = self.wham_instances[session_id]
 
         try:
             if action == "start":
-                greeting = jarvis.greet()
-                mode_msg = jarvis.start_mode("debug")
+                greeting = wham.greet()
+                mode_msg = wham.start_mode("debug")
                 await websocket.send_json({
-                    "type": "jarvis",
+                    "type": "wham",
                     "message": greeting,
                     "mode_activation": mode_msg,
                 })
             elif action == "analyze":
-                await self._handle_analyze(websocket, jarvis, data)
+                await self._handle_analyze(websocket, wham, data)
             elif action == "explain":
-                await self._handle_explain(websocket, jarvis, data)
+                await self._handle_explain(websocket, wham, data)
             elif action == "fix":
-                await self._handle_fix(websocket, jarvis, data)
+                await self._handle_fix(websocket, wham, data)
             else:
                 await websocket.send_json({
                     "type": "error",
@@ -790,7 +790,7 @@ class CodeDebugHandler(WebSocketHandler):
     async def _handle_analyze(
         self,
         websocket: WebSocket,
-        jarvis: JarvisPersonality,
+        wham: WHAMPersonality,
         data: dict
     ):
         """Analyze code for issues."""
@@ -804,7 +804,7 @@ class CodeDebugHandler(WebSocketHandler):
             "type": "analysis",
             "issues": issues,
             "language": language,
-            "jarvis": {
+            "wham": {
                 "message": self._get_analysis_comment(issues),
             }
         })
@@ -812,7 +812,7 @@ class CodeDebugHandler(WebSocketHandler):
     async def _handle_explain(
         self,
         websocket: WebSocket,
-        jarvis: JarvisPersonality,
+        wham: WHAMPersonality,
         data: dict
     ):
         """Explain code functionality."""
@@ -824,7 +824,7 @@ class CodeDebugHandler(WebSocketHandler):
             "type": "explanation",
             "code": code,
             "language": language,
-            "jarvis": {
+            "wham": {
                 "message": "Code analysis in progress, sir. Point at the specific section you'd like explained.",
             }
         })
@@ -832,7 +832,7 @@ class CodeDebugHandler(WebSocketHandler):
     async def _handle_fix(
         self,
         websocket: WebSocket,
-        jarvis: JarvisPersonality,
+        wham: WHAMPersonality,
         data: dict
     ):
         """Suggest fix for error."""
@@ -846,7 +846,7 @@ class CodeDebugHandler(WebSocketHandler):
             "type": "fix",
             "error": error,
             "suggestion": suggestion,
-            "jarvis": {
+            "wham": {
                 "message": f"I've identified the issue, sir. {suggestion.get('brief', '')}",
             }
         })
@@ -929,7 +929,7 @@ class CodeDebugHandler(WebSocketHandler):
             }
 
     def _get_analysis_comment(self, issues: list) -> str:
-        """Generate JARVIS comment for analysis results."""
+        """Generate WHAM comment for analysis results."""
         if not issues:
             return "No obvious issues detected, sir. The code appears clean."
 
@@ -951,8 +951,8 @@ class CodeDebugHandler(WebSocketHandler):
     ):
         """Clean up on disconnect."""
         session_id = topic.split(":")[-1] if ":" in topic else topic
-        if session_id in self.jarvis_instances:
-            del self.jarvis_instances[session_id]
+        if session_id in self.wham_instances:
+            del self.wham_instances[session_id]
 
 
 # Singleton handler instances

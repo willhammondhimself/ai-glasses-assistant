@@ -1,22 +1,28 @@
-# AI Glasses Assistant
+# AI Glasses Assistant - WHAM (Will's Helpful Assistant Module)
 
 My personal AR glasses project for the Brilliant Labs Halo. Built this to prep for quant interviews at Jane Street/Cit Sec/HRT because staring at flashcards got old fast.
 
-Think Iron Man's JARVIS meets Spider-Man's EDITH.
+Think Iron Man meets Spider-Man's EDITH - but personalized for my workflow.
 
 ## What This Actually Does
 
-**Mental Math Mode** - Throws arithmetic at you with quant-trader mental-math interview time pressure. D1 problems give you 2 seconds, D5 gives you 20. Miss the window and JARVIS will let you know about it (politely, but firmly).
+**Mental Math Mode** - Throws arithmetic at you with quant-trader mental-math interview time pressure. D1 problems give you 2 seconds, D5 gives you 20. Miss the window and WHAM will let you know about it (politely, but firmly).
 
 **Poker Mode** - Point at cards, get GTO analysis. Uses Claude to break down preflop ranges, pot odds, bet sizing. Useful for home games when you're trying to figure out if that river shove is a bluff.
 
-**Code Debug** - Still WIP but the idea is to look at code on a screen and have JARVIS explain what's broken. Currently does basic static analysis (catches bare excepts, eval() usage, the usual).
+**Code Debug** - Still WIP but the idea is to look at code on a screen and have WHAM explain what's broken. Currently does basic static analysis (catches bare excepts, eval() usage, the usual).
 
 **EDITH Scanner** - Background vision that notices when you're staring at an equation or code snippet for 1.5+ seconds, then offers to help. Tries not to be annoying about it.
 
-## The JARVIS Thing
+**Morning Briefing** - Daily summary with weather, calendar, and motivational context.
 
-I got tired of robotic AI responses, so everything goes through a personality layer that makes it sound like you have Tony Stark's Assistant in your ear:
+**Quick Capture** - Voice notes and thoughts captured on the go with automatic categorization.
+
+**Focus Mode** - Productivity tracking with Pomodoro-style work sessions.
+
+## The WHAM Personality
+
+I got tired of robotic AI responses, so everything goes through a personality layer that makes it sound like you have a personal AI assistant in your ear:
 
 - "2.3s - that's Jane Street caliber, sir."
 - "The correct answer was 847. Onward."
@@ -28,7 +34,8 @@ It tracks your session, knows when you're warming up vs in the zone vs strugglin
 
 ```
 backend/
-    jarvis/          # Personality layer - templates, context tracking, performance analysis
+    wham/            # Personality layer - templates, context tracking, performance analysis
+    dashboard/       # Web dashboard API
     hud/             # Display components - colors, progress bars, layouts
     edith/           # Background scanner - detection, power management
     websocket/       # Real-time handlers for each mode
@@ -36,8 +43,16 @@ backend/
     quant/           # Mental math problem generation
     server.py        # FastAPI entry point
 
-glasses_client/      # Code that runs on the Halo itself
-frontend/            # Web dashboard (mostly for testing)
+phone_client/        # Mobile/local client with offline capabilities
+    wham/            # WHAM personality implementation
+    modes/           # Different operational modes
+    integrations/    # External service connectors (Calendar, Weather, Notion)
+    halo/            # Halo glasses SDK integration
+    hud/             # HUD rendering
+
+desktop_capture/     # Desktop quick capture app with system tray
+
+frontend/            # Web dashboard (works without glasses)
 ```
 
 ## Running It
@@ -50,6 +65,9 @@ python -m uvicorn server:app --reload
 
 # You'll need an Anthropic API key in .env
 ANTHROPIC_API_KEY=sk-ant-...
+
+# Web Dashboard (no glasses needed)
+# Open http://localhost:8000/dashboard.html
 ```
 
 The glasses connect over WebSocket. Protocol is pretty simple:
@@ -61,8 +79,8 @@ The glasses connect over WebSocket. Protocol is pretty simple:
 // Submit answer
 {"action": "answer", "answer": "847"}
 
-// Get JARVIS feedback
-{"type": "result", "correct": true, "time_ms": 2340, "jarvis": {"feedback": "Well executed, sir. 2.34s."}}
+// Get WHAM feedback
+{"type": "result", "correct": true, "time_ms": 2340, "wham": {"feedback": "Well executed, sir. 2.34s."}}
 ```
 
 ## Hardware
@@ -70,6 +88,8 @@ The glasses connect over WebSocket. Protocol is pretty simple:
 Built for the [Brilliant Labs Halo](https://brilliant.xyz/products/halo) - 640x400 OLED, 20 degree FOV, full RGB. The HUD code generates render data that maps to their display format.
 
 Should work with any AR glasses that can run Python and connect to a backend, but the display layouts are sized for the Halo specifically.
+
+**No glasses?** Use the web dashboard at `/dashboard.html` to access all WHAM features.
 
 ## Why
 
@@ -80,23 +100,26 @@ The poker thing started because I play home games and wanted to actually underst
 ## Status
 
 This is a personal project, not production software. Things that work:
-- Mental math with full JARVIS integration
+- Mental math with full WHAM personality integration
 - Poker analysis (needs API key)
 - Basic HUD rendering
-- EDITH detection framework (detectors are stubs)
+- EDITH detection framework
+- Web dashboard (works without glasses)
+- Quick capture and memory system
+- Morning briefing mode
+- Focus/productivity tracking
 
 Things that don't work yet:
-- Actual computer vision for EDITH (using placeholder detection)
-- Code debug LLM integration
-- Homework help mode
+- Full computer vision for EDITH (using placeholder detection)
+- Complete Halo hardware integration
 - Multi-user support (hardcoded to "Will" and "sir")
 
 ## Tech Stack
 
 - FastAPI + WebSockets for the backend
-- Anthropic Claude for poker analysis and (eventually) vision
+- Anthropic Claude for poker analysis and vision
 - MicroPython on the glasses side
-- React for the web dashboard
+- Vanilla JS for the web dashboard
 
 ## License
 

@@ -9,7 +9,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Dict, Any, List, Optional
 
-from .colors import JARVIS_COLORS, rgb_to_hex
+from .colors import WHAM_COLORS, rgb_to_hex
 from .components import (
     HUDComponent,
     Position,
@@ -24,7 +24,7 @@ from .components import (
     ProblemDisplay,
     ResultOverlay,
     SessionSummary,
-    JarvisMessage,
+    WHAMMessage,
 )
 
 
@@ -61,7 +61,7 @@ class MentalMathLayout(HUDLayout):
     │                                     │
     │                                     │
     │  [Accuracy]              [Progress] │  <- Bottom bar
-    │  "JARVIS message here..."           │  <- JARVIS feedback
+    │  "WHAM message here..."           │  <- WHAM feedback
     └─────────────────────────────────────┘
     """
 
@@ -70,7 +70,7 @@ class MentalMathLayout(HUDLayout):
     TOP_BAR_Y = 15
     PROBLEM_Y = 150
     BOTTOM_BAR_Y = 340
-    JARVIS_Y = 370
+    WHAM_Y = 370
 
     def __init__(self):
         super().__init__()
@@ -121,9 +121,9 @@ class MentalMathLayout(HUDLayout):
             segment_count=10
         )
 
-        # JARVIS message at bottom
-        self.components["jarvis"] = JarvisMessage(
-            position=Position(self.MARGIN, self.JARVIS_Y),
+        # WHAM message at bottom
+        self.components["wham"] = WHAMMessage(
+            position=Position(self.MARGIN, self.WHAM_Y),
             message=""
         )
 
@@ -148,7 +148,7 @@ class MentalMathLayout(HUDLayout):
         - total: int
         - problem_text: str
         - problem_number: int
-        - jarvis_message: str
+        - wham_message: str
         - show_result: bool
         - result_correct: bool
         - result_time_ms: int
@@ -185,10 +185,10 @@ class MentalMathLayout(HUDLayout):
         current = data.get("total", 0)
         self.components["progress"].progress = min(1, current / target_problems)
 
-        # Update JARVIS message
-        if "jarvis_message" in data:
-            self.components["jarvis"].message = data["jarvis_message"]
-            self.components["jarvis"].visible = bool(data["jarvis_message"])
+        # Update WHAM message
+        if "wham_message" in data:
+            self.components["wham"].message = data["wham_message"]
+            self.components["wham"].visible = bool(data["wham_message"])
 
         # Update result overlay
         if data.get("show_result"):
@@ -225,7 +225,7 @@ class PokerLayout(HUDLayout):
     │   Board: 10♠ J♠ 2♣ 5♦              │
     │                                     │
     │  Equity: 65%    |    Action: RAISE  │
-    │  "JARVIS analysis..."               │
+    │  "WHAM analysis..."               │
     └─────────────────────────────────────┘
     """
 
@@ -234,7 +234,7 @@ class PokerLayout(HUDLayout):
     HAND_Y = 100
     BOARD_Y = 180
     ANALYSIS_Y = 280
-    JARVIS_Y = 350
+    WHAM_Y = 350
 
     def __init__(self):
         super().__init__()
@@ -245,17 +245,17 @@ class PokerLayout(HUDLayout):
         # Top bar elements would go here
         # Hand display, board display, equity meter, etc.
 
-        # JARVIS message
-        self.components["jarvis"] = JarvisMessage(
-            position=Position(self.MARGIN, self.JARVIS_Y),
+        # WHAM message
+        self.components["wham"] = WHAMMessage(
+            position=Position(self.MARGIN, self.WHAM_Y),
             message=""
         )
 
     def build(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Build poker layout with analysis data."""
         # Update components based on data
-        if "jarvis_message" in data:
-            self.components["jarvis"].message = data["jarvis_message"]
+        if "wham_message" in data:
+            self.components["wham"].message = data["wham_message"]
 
         return self.render_all()
 
@@ -273,7 +273,7 @@ class CodeDebugLayout(HUDLayout):
     │                                     │
     │  Suggested Fix:                     │
     │  Check if obj exists before access  │
-    │  "JARVIS suggestion..."             │
+    │  "WHAM suggestion..."             │
     └─────────────────────────────────────┘
     """
 
@@ -285,15 +285,15 @@ class CodeDebugLayout(HUDLayout):
 
     def _init_components(self):
         """Initialize code debug components."""
-        self.components["jarvis"] = JarvisMessage(
+        self.components["wham"] = WHAMMessage(
             position=Position(self.MARGIN, 350),
             message=""
         )
 
     def build(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Build code debug layout."""
-        if "jarvis_message" in data:
-            self.components["jarvis"].message = data["jarvis_message"]
+        if "wham_message" in data:
+            self.components["wham"].message = data["wham_message"]
 
         return self.render_all()
 
@@ -313,15 +313,15 @@ class HomeworkLayout(HUDLayout):
 
     def _init_components(self):
         """Initialize homework help components."""
-        self.components["jarvis"] = JarvisMessage(
+        self.components["wham"] = WHAMMessage(
             position=Position(self.MARGIN, 350),
             message="Point at a problem for analysis, sir."
         )
 
     def build(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Build homework help layout."""
-        if "jarvis_message" in data:
-            self.components["jarvis"].message = data["jarvis_message"]
+        if "wham_message" in data:
+            self.components["wham"].message = data["wham_message"]
 
         return self.render_all()
 

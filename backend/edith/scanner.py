@@ -359,7 +359,7 @@ class EdithScanner:
         logger.info(f"EDITH suggestion: {result.detection_type.value} - {suggestion}")
 
     def _generate_suggestion(self, result: ScanResult) -> str:
-        """Generate JARVIS-style suggestion message."""
+        """Generate WHAM-style suggestion message."""
         suggestions = {
             DetectionType.EQUATION: "I've detected an equation, sir. Shall I solve it?",
             DetectionType.CODE: "Code snippet detected. Would you like me to analyze it?",

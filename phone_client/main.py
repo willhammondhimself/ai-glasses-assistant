@@ -13,6 +13,8 @@ from typing import Optional, Union
 
 # Local imports
 from halo.connection import HaloConnection, HaloConfig, scan_for_halo
+from halo.oled_renderer import OLEDRenderer, create_oled_renderer
+from halo.animations import AnimationEngine, create_animation_engine
 from wham.personality import WHAMPersonality
 from hud.renderer import HUDRenderer
 from hud.poker_display import PokerHUD
@@ -24,6 +26,14 @@ from modes.homework_mode import HomeworkMode, HomeworkConfig
 from modes.code_debug_mode import CodeDebugMode, DebugConfig
 from edith.scanner import EdithScanner, ScanConfig
 from core.router import IntelligenceRouter
+from core.session_summary import SessionSummaryManager
+from core.power_manager import PowerManager, PowerMode
+from core.notifications import NotificationManager, NotificationPriority, Notification
+from core.context_memory import ContextMemory
+from core.daily_challenge import DailyChallenges, ChallengeCategory
+from modes.morning_briefing import MorningAssistant, BriefingItemType, BriefingItem
+from modes.quick_capture import QuickCapture, CaptureType
+from modes.focus_mode import FocusMode, DistractionLevel
 
 # Optional: Whisper for voice recognition
 try:
@@ -62,12 +72,30 @@ class WHAMClient:
             location=self.config["user"]["locations"][0] if self.config["user"]["locations"] else None,
             humor_level=self.config["personality"].get("humor_level", "low")
         )
+        # Power management (initialized before renderers)
+        self.power_manager = PowerManager(self.config)
+        self.power_manager.on_mode_change(self._on_power_mode_change)
+
+        # Renderers (old and new)
         self.renderer = HUDRenderer()
-        self.poker_hud = PokerHUD()
+        self.oled_renderer = create_oled_renderer(self.config, self.power_manager)
+        self.animations = create_animation_engine(self.config, self.oled_renderer)
+
+        # HUDs (now with power manager)
+        self.poker_hud = PokerHUD(power_manager=self.power_manager, config=self.config)
         self.homework_hud = HomeworkHUD()
         self.code_debug_hud = CodeDebugHUD()
+
+        # Notification system
+        self.notifications = NotificationManager(self.config)
+        self.notifications.set_display_callback(self._display_notification)
+
+        # EDITH and router
         self.edith: Optional[EdithScanner] = None
         self.router = IntelligenceRouter()
+
+        # Do Not Disturb state
+        self._do_not_disturb = False
 
         # Current mode
         self.current_mode: Optional[Union[MentalMathMode, LivePokerCoach, HomeworkMode, CodeDebugMode]] = None
@@ -86,6 +114,34 @@ class WHAMClient:
         # State
         self.running = False
         self._input_queue: asyncio.Queue = asyncio.Queue()
+
+        # Session summary tracking
+        self.session_summary = SessionSummaryManager(self.config)
+        self.last_poker_result: Optional[dict] = None
+        self.last_homework_result: Optional[dict] = None
+
+        # Daily-life features
+        self.context_memory = ContextMemory(self.config)
+        self.daily_challenges = DailyChallenges(self.config)
+        self.morning_assistant = MorningAssistant(
+            self.config, user_name=self.config["user"]["name"]
+        )
+        self.quick_capture = QuickCapture(self.config)
+        self.focus_mode = FocusMode(self.config)
+
+        # Register challenge callbacks
+        self.daily_challenges.on_challenge_complete(self._on_challenge_complete)
+        self.daily_challenges.on_level_up(self._on_level_up)
+
+        # Voice command shortcuts (batch commands)
+        self._voice_shortcuts = {
+            "work mode": ["focus on work", "do not disturb", "hide notifications"],
+            "study mode": ["focus on studying", "do not disturb"],
+            "meeting mode": ["start meeting mode", "do not disturb"],
+            "break time": ["end focus", "notifications on"],
+            "good morning": ["morning briefing"],
+            "end day": ["show stats", "save session", "end focus"],
+        }
 
     def _load_config(self, config_path: str) -> dict:
         """Load configuration from YAML file."""
@@ -132,6 +188,127 @@ class WHAMClient:
                 "scan_interval_seconds": 5,
             },
         }
+
+    # ============================================================
+    # Power & Notification Callbacks
+    # ============================================================
+
+    def _on_power_mode_change(self, old_mode: PowerMode, new_mode: PowerMode):
+        """Handle power mode transitions."""
+        logger.info(f"Power mode changed: {old_mode.value} → {new_mode.value}")
+
+        # Notify user of significant changes
+        if new_mode == PowerMode.CRITICAL:
+            self.notifications.notify_battery_low(
+                self.power_manager._state.battery_percent
+            )
+        elif new_mode == PowerMode.SAVER:
+            self.notifications.push_quick(
+                "Power Saver Active",
+                "Display dimmed to save battery",
+                NotificationPriority.MEDIUM,
+                category="battery"
+            )
+
+        # Adjust EDITH behavior based on power
+        if self.edith:
+            if new_mode == PowerMode.CRITICAL:
+                self.edith.set_battery_saver(True)
+            elif old_mode == PowerMode.CRITICAL:
+                self.edith.set_battery_saver(False)
+
+    async def _display_notification(self, notification: Notification):
+        """Display a notification on the HUD."""
+        if not self.halo or not self.halo.connected:
+            logger.debug(f"Cannot display notification (not connected): {notification.title}")
+            return
+
+        # Generate notification Lua code
+        self.oled_renderer.clear()
+
+        # Toast-style notification at bottom
+        toast_height = 80
+        toast_y = self.oled_renderer.height - toast_height
+
+        # Background
+        self.oled_renderer.rect(0, toast_y, self.oled_renderer.width, toast_height,
+                                 (30, 30, 35), filled=True)
+
+        # Color accent bar
+        self.oled_renderer.rect(0, toast_y, 4, toast_height, notification.color, filled=True)
+
+        # Icon if present
+        text_x = 30
+        if notification.icon:
+            self.oled_renderer.text(notification.icon, 20, toast_y + 20, notification.color, 24)
+            text_x = 50
+
+        # Title
+        self.oled_renderer.text(notification.title, text_x, toast_y + 20, notification.color, 24, "left")
+
+        # Message
+        if notification.message:
+            msg = notification.message[:50] + "..." if len(notification.message) > 50 else notification.message
+            self.oled_renderer.text(msg, text_x, toast_y + 50, (180, 180, 180), 18, "left")
+
+        self.oled_renderer.show()
+
+        try:
+            await self.halo.send_lua(self.oled_renderer.get_lua())
+
+            # Auto-dismiss after duration
+            await asyncio.sleep(notification.duration_ms / 1000)
+            self.notifications.dismiss_current()
+
+        except Exception as e:
+            logger.error(f"Failed to display notification: {e}")
+
+    def _on_challenge_complete(self, challenge, xp_earned: int):
+        """Handle challenge completion."""
+        logger.info(f"Challenge completed: {challenge.title} (+{xp_earned} XP)")
+        self.notifications.push_quick(
+            f"Challenge Complete! +{xp_earned} XP",
+            challenge.title,
+            NotificationPriority.HIGH,
+            category="challenge"
+        )
+
+    def _on_level_up(self, old_level: int, new_level: int):
+        """Handle level up event."""
+        logger.info(f"Level up: {old_level} → {new_level}")
+        self.notifications.push_quick(
+            f"Level Up! Level {new_level}",
+            "Keep up the great work!",
+            NotificationPriority.HIGH,
+            category="achievement"
+        )
+
+    def update_battery(self, percent: int, charging: bool = False):
+        """Update battery status from glasses."""
+        mode_changed = self.power_manager.update_battery(percent, charging)
+
+        # Update EDITH interval if needed
+        if self.edith and mode_changed:
+            if self.power_manager.is_low_power():
+                self.edith.set_battery_saver(True)
+            else:
+                self.edith.set_battery_saver(False)
+
+    def set_do_not_disturb(self, enabled: bool):
+        """Toggle do not disturb mode."""
+        self._do_not_disturb = enabled
+        self.notifications.set_do_not_disturb(enabled)
+
+        if enabled:
+            logger.info("Do Not Disturb: ENABLED")
+        else:
+            logger.info("Do Not Disturb: DISABLED")
+
+    def set_brightness(self, level: float):
+        """Set display brightness (0.0-1.0)."""
+        level = max(0.0, min(1.0, level))
+        self.oled_renderer.set_brightness(level)
+        logger.info(f"Brightness set to {level:.0%}")
 
     def _init_whisper(self):
         """Initialize Whisper voice recognition."""
@@ -463,6 +640,53 @@ class WHAMClient:
             self.mode_name = "idle"
             await self._show_idle("Mode ended")
 
+    async def show_session_stats(self):
+        """Display current session statistics on HUD."""
+        summary = self.session_summary.generate_summary()
+        formatted = self.session_summary.format_summary(summary)
+
+        # Display on HUD (10 second duration)
+        lua = self.renderer.render_text(formatted, title="SESSION STATS")
+        await self._send_display(lua)
+
+        # Speak brief summary
+        await self._speak(
+            f"Session: ${summary.total_cost:.2f} spent. "
+            f"{summary.poker.count} poker hands. "
+            f"{summary.homework.count} homework problems."
+        )
+
+    async def recall_last_result(self):
+        """Show the last decision/result."""
+        if self.last_poker_result:
+            # Re-display last poker recommendation
+            lua = self.poker_hud.render_recommendation(
+                hero_cards=self.last_poker_result.get('hero_cards', ['?', '?']),
+                board=self.last_poker_result.get('board', []),
+                action=self.last_poker_result.get('action', 'FOLD'),
+                sizing=self.last_poker_result.get('sizing', ''),
+                equity=self.last_poker_result.get('equity', 0),
+                reasoning=self.last_poker_result.get('reasoning', ''),
+                cost=self.last_poker_result.get('cost', 0),
+                confidence=self.last_poker_result.get('confidence')
+            )
+            await self._send_display(lua)
+            await self._speak(f"Last hand: {self.last_poker_result.get('action', 'FOLD')}")
+        elif self.last_homework_result:
+            # Re-display last homework solution
+            lua = self.homework_hud.render_solution(
+                problem=self.last_homework_result.get('problem', ''),
+                answer=self.last_homework_result.get('answer', ''),
+                steps=self.last_homework_result.get('steps', []),
+                method=self.last_homework_result.get('method', 'unknown'),
+                cost=self.last_homework_result.get('cost', 0),
+                latency_ms=self.last_homework_result.get('latency_ms', 0)
+            )
+            await self._send_display(lua)
+            await self._speak(f"Last answer: {self.last_homework_result.get('answer', 'unknown')}")
+        else:
+            await self._speak("No recent results to recall.")
+
     async def analyze_poker_hand(self, text: str = ""):
         """Analyze current poker hand."""
         if not self.poker_coach:
@@ -492,10 +716,31 @@ class WHAMClient:
                     equity=rec.equity,
                     reasoning=rec.reasoning,
                     cost=rec.cost,
-                    latency_ms=rec.latency_ms
+                    latency_ms=rec.latency_ms,
+                    confidence=rec.confidence
                 )
                 await self._send_display(lua)
                 await self._speak(f"{rec.action}. {rec.reasoning}")
+
+                # Store for recall
+                self.last_poker_result = {
+                    'hero_cards': rec.villain_type,  # Placeholder
+                    'board': [],
+                    'action': rec.action,
+                    'sizing': rec.sizing,
+                    'equity': rec.equity,
+                    'reasoning': rec.reasoning,
+                    'cost': rec.cost,
+                    'confidence': rec.confidence
+                }
+
+                # Record to session summary
+                self.session_summary.record_poker_hand({
+                    'hand_num': self.poker_coach.session.stats.hands_played if self.poker_coach.session else 0,
+                    'cost': rec.cost,
+                    'mistake_detected': False,
+                    'mistake': None
+                })
                 return
 
         # Text-based analysis fallback
@@ -532,6 +777,239 @@ class WHAMClient:
         """
         text = text.lower().strip()
         logger.info(f"Command: '{text}'")
+
+        # === BATCH VOICE SHORTCUTS ===
+        for shortcut, commands in self._voice_shortcuts.items():
+            if shortcut in text:
+                logger.info(f"Executing batch shortcut: {shortcut}")
+                for cmd in commands:
+                    await self.process_voice_command(cmd)
+                return
+
+        # === MORNING BRIEFING ===
+        if any(w in text for w in ["morning briefing", "good morning", "what's today"]):
+            async def show_briefing(briefing):
+                lines = self.morning_assistant.format_for_display(briefing)
+                lua = self.renderer.render_text("\n".join(lines), title="MORNING BRIEFING")
+                await self._send_display(lua)
+
+            briefing = await self.morning_assistant.deliver_briefing(show_briefing)
+            tts = self.morning_assistant.format_for_tts(briefing)
+            await self._speak(tts)
+            return
+
+        # === QUICK CAPTURE ===
+        if any(w in text for w in ["capture", "note", "remember that", "remind me"]):
+            # Extract content after trigger
+            content = text
+            for trigger in ["capture", "note", "remember that", "remind me"]:
+                if trigger in text:
+                    idx = text.find(trigger)
+                    content = text[idx + len(trigger):].strip()
+                    break
+
+            if content:
+                capture = self.quick_capture.capture_voice(content)
+                await self._speak(f"Captured: {capture.type.value}")
+
+                # Record to challenges
+                self.daily_challenges.record_progress(ChallengeCategory.PRODUCTIVITY, 1)
+                return
+
+        if "show captures" in text or "my notes" in text:
+            recent = self.quick_capture.get_recent(5)
+            if recent:
+                lines = ["Recent Captures:"]
+                for c in recent:
+                    lines.append(f"• {c.content[:40]}...")
+                lua = self.renderer.render_text("\n".join(lines), title="CAPTURES")
+                await self._send_display(lua)
+                await self._speak(f"You have {len(recent)} recent captures.")
+            else:
+                await self._speak("No captures yet.")
+            return
+
+        # === FOCUS MODE ===
+        if any(w in text for w in ["focus on", "start focus", "pomodoro"]):
+            # Extract task
+            task = "work"
+            for trigger in ["focus on", "start focus on"]:
+                if trigger in text:
+                    task = text.split(trigger)[-1].strip() or "work"
+                    break
+
+            session = await self.focus_mode.start_session(
+                task=task,
+                distraction_level=DistractionLevel.MEDIUM
+            )
+            await self._speak(f"Focus session started. {session.focus_duration_min} minutes on {task}.")
+
+            # Show on HUD
+            lines = self.focus_mode.format_for_display()
+            lua = self.renderer.render_text("\n".join(lines), title="FOCUS MODE")
+            await self._send_display(lua)
+            return
+
+        if any(w in text for w in ["end focus", "stop focus", "done focusing"]):
+            if self.focus_mode.get_current_session():
+                session = await self.focus_mode.end_session()
+                if session:
+                    # Record to challenges
+                    self.daily_challenges.record_progress(
+                        ChallengeCategory.FOCUS,
+                        session.completed_pomodoros
+                    )
+                    await self._speak(
+                        f"Focus ended. {session.completed_pomodoros} pomodoros, "
+                        f"{session.total_focus_time_s // 60} minutes focused."
+                    )
+            else:
+                await self._speak("No focus session active.")
+            return
+
+        if "skip break" in text:
+            await self.focus_mode.skip_break()
+            await self._speak("Break skipped. Focusing.")
+            return
+
+        if "focus status" in text:
+            tts = self.focus_mode.format_for_tts()
+            await self._speak(tts)
+            return
+
+        # === CONTEXT MEMORY ===
+        if any(w in text for w in ["remember that", "keep in mind"]):
+            # Parse and store memory
+            memory = self.context_memory.parse_remember_command(text)
+            if memory:
+                await self._speak(f"I'll remember that about {memory.entity or 'this'}.")
+                self.daily_challenges.record_progress(ChallengeCategory.LEARNING, 1)
+            return
+
+        if any(w in text for w in ["what do you know about", "tell me about", "recall"]):
+            # Parse and recall
+            memories = self.context_memory.parse_recall_command(text)
+            if memories:
+                lines = self.context_memory.format_memories_for_display(memories)
+                lua = self.renderer.render_text("\n".join(lines), title="MEMORIES")
+                await self._send_display(lua)
+                await self._speak(f"Found {len(memories)} related memories.")
+            else:
+                await self._speak("I don't have any memories about that.")
+            return
+
+        # === DAILY CHALLENGES ===
+        if any(w in text for w in ["challenges", "daily challenges", "my challenges"]):
+            challenges = self.daily_challenges.get_daily_challenges()
+            lines = self.daily_challenges.format_for_display()
+            lua = self.renderer.render_text("\n".join(lines), title="DAILY CHALLENGES")
+            await self._send_display(lua)
+            tts = self.daily_challenges.format_for_tts()
+            await self._speak(tts)
+            return
+
+        if any(w in text for w in ["my level", "xp", "progress"]):
+            progress = self.daily_challenges.get_progress()
+            await self._speak(
+                f"Level {progress.level} with {progress.total_xp} XP. "
+                f"{self.daily_challenges.get_xp_to_next_level()} XP to next level. "
+                f"{progress.current_streak} day streak."
+            )
+            return
+
+        # === VOICE SHORTCUTS ===
+
+        # Quick stats
+        if any(w in text for w in ["stats", "show stats", "summary", "how am i doing"]):
+            await self.show_session_stats()
+            return
+
+        # Recall last result
+        if any(w in text for w in ["last hand", "previous", "what did i do"]):
+            await self.recall_last_result()
+            return
+
+        # Force tier override - local only
+        if any(w in text for w in ["faster", "local only", "offline mode"]):
+            self.router.force_local_mode(True)
+            await self._speak("Local mode enabled. Cloud APIs disabled.")
+            return
+
+        # Force tier override - budget mode
+        if any(w in text for w in ["cheaper", "save money", "budget mode"]):
+            self.router.prefer_cheap_tier(True)
+            await self._speak("Budget mode enabled. Using cheapest models.")
+            return
+
+        # Reset mode overrides
+        if any(w in text for w in ["full power", "best quality", "no limits"]):
+            self.router.force_local_mode(False)
+            self.router.prefer_cheap_tier(False)
+            await self._speak("Full power mode. All models enabled.")
+            return
+
+        # EDITH pause/resume
+        if any(w in text for w in ["pause", "stop scanning", "standby"]):
+            if self.edith:
+                await self.edith.pause()
+                await self._speak("EDITH paused. Say resume to continue.")
+            return
+
+        if any(w in text for w in ["resume", "start scanning", "wake up"]):
+            if self.edith:
+                await self.edith.resume()
+                await self._speak("EDITH scanning resumed.")
+            return
+
+        # === DISPLAY & POWER COMMANDS ===
+
+        # Brightness control
+        if "brightness up" in text or "brighter" in text:
+            current = self.oled_renderer._brightness
+            self.set_brightness(min(1.0, current + 0.2))
+            await self._speak(f"Brightness at {self.oled_renderer._brightness:.0%}")
+            return
+
+        if "brightness down" in text or "dimmer" in text or "dim" in text:
+            current = self.oled_renderer._brightness
+            self.set_brightness(max(0.2, current - 0.2))
+            await self._speak(f"Brightness at {self.oled_renderer._brightness:.0%}")
+            return
+
+        # Power saver mode
+        if any(w in text for w in ["power saver", "save power", "low power"]):
+            self.power_manager.set_mode_override(PowerMode.SAVER)
+            await self._speak("Power saver mode enabled.")
+            return
+
+        if any(w in text for w in ["full brightness", "max brightness"]):
+            self.power_manager.set_mode_override(PowerMode.FULL)
+            await self._speak("Full brightness mode.")
+            return
+
+        if "auto power" in text or "auto brightness" in text:
+            self.power_manager.set_mode_override(None)
+            await self._speak("Auto power management enabled.")
+            return
+
+        # Do Not Disturb
+        if any(w in text for w in ["do not disturb", "quiet mode", "silence notifications"]):
+            self.set_do_not_disturb(True)
+            await self._speak("Do Not Disturb enabled. Only critical alerts will show.")
+            return
+
+        if any(w in text for w in ["allow notifications", "notifications on", "unquiet"]):
+            self.set_do_not_disturb(False)
+            await self._speak("Notifications enabled.")
+            return
+
+        # Battery status
+        if any(w in text for w in ["battery", "power status", "how much power"]):
+            status = self.power_manager.get_status_string()
+            await self._speak(f"Power status: {status}")
+            return
+
+        # === EXISTING COMMANDS ===
 
         # Mental math activation
         if any(w in text for w in ["mental math", "math mode", "speed math"]):
@@ -669,15 +1147,37 @@ class WHAMClient:
             input_task.cancel()
 
     async def shutdown(self):
-        """Shutdown the client."""
+        """Shutdown the client with session summary."""
         self.running = False
         await self.stop_mode()
+
+        # Generate and display session summary
+        if self.config.get('session_summary', {}).get('display_on_shutdown', True):
+            try:
+                summary = self.session_summary.generate_summary()
+                formatted = self.session_summary.format_summary(summary)
+
+                # Display on HUD for 15 seconds
+                lua = self.renderer.render_text(formatted, title="SESSION SUMMARY")
+                await self._send_display(lua)
+
+                # Print to console
+                print("\n" + formatted + "\n")
+
+                # Save to file
+                if self.config.get('session_summary', {}).get('save_to_file', True):
+                    saved_path = self.session_summary.save_summary(summary)
+                    logger.info(f"Session summary saved to {saved_path}")
+
+                # Brief pause to let user see summary
+                await asyncio.sleep(5)
+
+            except Exception as e:
+                logger.error(f"Error generating session summary: {e}")
+
         await self.disconnect()
         logger.info("WHAM shutdown complete")
 
-
-# Backwards compatibility alias
-JarvisClient = WHAMClient
 
 
 async def main():

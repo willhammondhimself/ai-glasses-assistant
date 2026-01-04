@@ -69,6 +69,10 @@ class IntelligenceRouter:
         self.cost_tracker = CostTracker()
         self.tier_usage: Dict[RoutingTier, int] = {tier: 0 for tier in RoutingTier}
 
+        # Mode controls
+        self._force_local = False
+        self._prefer_cheap = False
+
     def _lazy_load_clients(self):
         """Lazy load API clients when first needed."""
         if self._gemini is None:
@@ -133,6 +137,28 @@ class IntelligenceRouter:
             RouteDecision with tier and reasoning
         """
         context = context or {}
+
+        # Check for forced local mode
+        if self._force_local:
+            return RouteDecision(
+                tier=RoutingTier.LOCAL,
+                model="local_forced",
+                estimated_latency_ms=50,
+                estimated_cost=0,
+                reasoning="Local mode enabled - cloud APIs disabled"
+            )
+
+        # Check for budget mode - prefer cheaper tiers
+        if self._prefer_cheap and mode not in ["ocr", "card_detection", "math_ocr", "code_ocr"]:
+            # For non-vision tasks, try to use local or cheaper options
+            if mode in ["poker_strategy", "debug", "homework", "analysis"]:
+                return RouteDecision(
+                    tier=RoutingTier.LOCAL,
+                    model="local_budget",
+                    estimated_latency_ms=50,
+                    estimated_cost=0,
+                    reasoning="Budget mode - using local engine"
+                )
 
         # Tier 1: Local engines
         if mode == "mental_math" or mode == "arithmetic":
@@ -512,3 +538,39 @@ class IntelligenceRouter:
         """Reset session statistics."""
         self.tier_usage = {tier: 0 for tier in RoutingTier}
         self.cost_tracker.reset()
+
+    def force_local_mode(self, enabled: bool):
+        """
+        Force local-only mode (no cloud APIs).
+
+        When enabled, all queries will be routed to local engines only.
+        This is useful for offline mode or to minimize API costs.
+
+        Args:
+            enabled: True to force local mode, False to allow cloud
+        """
+        self._force_local = enabled
+        logger.info(f"Local mode: {'enabled' if enabled else 'disabled'}")
+
+    def prefer_cheap_tier(self, enabled: bool):
+        """
+        Prefer cheaper tiers when possible.
+
+        When enabled, the router will prefer LOCAL and GEMINI over
+        DEEPSEEK for tasks that can work with either.
+
+        Args:
+            enabled: True to prefer cheap tiers, False for normal routing
+        """
+        self._prefer_cheap = enabled
+        logger.info(f"Budget mode: {'enabled' if enabled else 'disabled'}")
+
+    @property
+    def is_local_mode(self) -> bool:
+        """Check if local-only mode is enabled."""
+        return self._force_local
+
+    @property
+    def is_budget_mode(self) -> bool:
+        """Check if budget mode is enabled."""
+        return self._prefer_cheap

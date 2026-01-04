@@ -12,7 +12,7 @@ from enum import Enum
 
 from .colors import (
     RGB, RGBA,
-    JARVIS_COLORS,
+    WHAM_COLORS,
     get_timer_color,
     get_streak_color,
     get_accuracy_color,
@@ -118,8 +118,8 @@ class ProgressBar(HUDComponent):
     ):
         super().__init__(position, Size(width, height))
         self.progress = max(0, min(1, progress))
-        self.color = color or JARVIS_COLORS.primary
-        self.bg_color = bg_color or JARVIS_COLORS.panel_bg
+        self.color = color or WHAM_COLORS.primary
+        self.bg_color = bg_color or WHAM_COLORS.panel_bg
         self.show_glow = show_glow
         self.show_segments = show_segments
         self.segment_count = segment_count
@@ -376,7 +376,7 @@ class ProblemDisplay(HUDComponent):
             "problem_number": self.problem_number,
             "category": self.category,
             "font_size": self.font_size,
-            "color": rgb_to_hex(JARVIS_COLORS.text_primary),
+            "color": rgb_to_hex(WHAM_COLORS.text_primary),
             "alignment": Alignment.CENTER.value,
         }
 
@@ -415,7 +415,7 @@ class ResultOverlay(HUDComponent):
             animation = AnimationType.SCALE_UP
         else:
             icon = "✗"
-            color = JARVIS_COLORS.error
+            color = WHAM_COLORS.error
             animation = AnimationType.FLASH
 
         return {
@@ -436,7 +436,7 @@ class SessionSummary(HUDComponent):
     """
     End-of-session summary display.
 
-    Shows comprehensive stats with JARVIS commentary.
+    Shows comprehensive stats with WHAM commentary.
     """
 
     def __init__(
@@ -448,7 +448,7 @@ class SessionSummary(HUDComponent):
         avg_time_ms: int,
         duration_seconds: int,
         grade: str = "B",
-        jarvis_message: str = "",
+        wham_message: str = "",
     ):
         super().__init__(
             position,
@@ -461,7 +461,7 @@ class SessionSummary(HUDComponent):
         self.avg_time_ms = avg_time_ms
         self.duration_seconds = duration_seconds
         self.grade = grade
-        self.jarvis_message = jarvis_message
+        self.wham_message = wham_message
 
     @property
     def accuracy(self) -> float:
@@ -473,12 +473,12 @@ class SessionSummary(HUDComponent):
         # Grade colors
         grade_colors = {
             "S": (255, 215, 0),    # Gold
-            "A": JARVIS_COLORS.success,
-            "B": JARVIS_COLORS.primary,
-            "C": JARVIS_COLORS.warning,
-            "D": JARVIS_COLORS.error,
+            "A": WHAM_COLORS.success,
+            "B": WHAM_COLORS.primary,
+            "C": WHAM_COLORS.warning,
+            "D": WHAM_COLORS.error,
         }
-        grade_color = grade_colors.get(self.grade, JARVIS_COLORS.text_secondary)
+        grade_color = grade_colors.get(self.grade, WHAM_COLORS.text_secondary)
 
         return {
             "type": "session_summary",
@@ -494,8 +494,8 @@ class SessionSummary(HUDComponent):
             },
             "grade": self.grade,
             "grade_color": rgb_to_hex(grade_color),
-            "jarvis_message": self.jarvis_message,
-            "primary_color": rgb_to_hex(JARVIS_COLORS.primary),
+            "wham_message": self.wham_message,
+            "primary_color": rgb_to_hex(WHAM_COLORS.primary),
         }
 
     def _format_duration(self) -> str:
@@ -505,9 +505,9 @@ class SessionSummary(HUDComponent):
         return f"{minutes}:{seconds:02d}"
 
 
-class JarvisMessage(HUDComponent):
+class WHAMMessage(HUDComponent):
     """
-    JARVIS personality message display.
+    WHAM personality message display.
 
     Shows witty feedback with typewriter effect option.
     """
@@ -527,14 +527,14 @@ class JarvisMessage(HUDComponent):
     def render(self) -> Dict[str, Any]:
         # Importance colors
         colors = {
-            "normal": JARVIS_COLORS.text_secondary,
-            "milestone": JARVIS_COLORS.primary_bright,
-            "warning": JARVIS_COLORS.warning,
+            "normal": WHAM_COLORS.text_secondary,
+            "milestone": WHAM_COLORS.primary_bright,
+            "warning": WHAM_COLORS.warning,
         }
-        color = colors.get(self.importance, JARVIS_COLORS.text_secondary)
+        color = colors.get(self.importance, WHAM_COLORS.text_secondary)
 
         return {
-            "type": "jarvis_message",
+            "type": "wham_message",
             "message": self.message,
             "color": rgb_to_hex(color),
             "importance": self.importance,

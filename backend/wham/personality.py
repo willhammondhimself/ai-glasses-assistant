@@ -1,23 +1,23 @@
 """
-JARVIS Personality Core
+WHAM Personality Core
 
 The main personality engine that transforms dry responses into
-Tony Stark's AI assistant style interactions.
+a personal AI assistant style interactions.
 """
 
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 
 from .templates import ResponseTemplates
-from .context import JarvisContext, ProblemResult, SessionPhase
+from .context import WHAMContext, ProblemResult, SessionPhase
 from .performance import PerformanceAnalyzer, PerformanceInsight
 
 
-class JarvisPersonality:
+class WHAMPersonality:
     """
-    JARVIS Personality Engine
+    WHAM Personality Engine
 
-    Transforms standard responses into Tony Stark's AI assistant style.
+    Transforms standard responses into a personal AI assistant style.
     Maintains context awareness for personalized, witty interactions.
 
     Key behaviors:
@@ -34,7 +34,7 @@ class JarvisPersonality:
         preferred_address: str = "sir",
     ):
         self.templates = ResponseTemplates()
-        self.context = JarvisContext(
+        self.context = WHAMContext(
             user_name=user_name,
             preferred_address=preferred_address,
         )
@@ -71,7 +71,7 @@ class JarvisPersonality:
         # Get trend
         trend = self.context.get_performance_trend()
 
-        # Generate JARVIS-style summary message
+        # Generate WHAM-style summary message
         message = self.templates.get_session_summary(
             address=self.address,
             correct=self.context.stats.correct_count,
@@ -97,7 +97,7 @@ class JarvisPersonality:
         difficulty: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
-        Format problem presentation with JARVIS style.
+        Format problem presentation with WHAM style.
 
         Returns dict with:
         - problem_text: The problem to display
@@ -128,7 +128,7 @@ class JarvisPersonality:
         category: str = "mental_math",
     ) -> Dict[str, Any]:
         """
-        Process user's answer and generate JARVIS-style feedback.
+        Process user's answer and generate WHAM-style feedback.
 
         Returns comprehensive feedback dict with:
         - correct: Whether answer was correct

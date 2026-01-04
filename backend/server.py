@@ -15,6 +15,8 @@ Main server that routes requests to specialized engines:
 import time
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from dotenv import load_dotenv
@@ -69,6 +71,9 @@ from backend.meeting import meeting_handler
 from backend.models import PaginatedResponse, ColorScheme, Slide
 from backend.formatters import MathSlideBuilder, QuantSlideBuilder
 
+# Import dashboard API
+from backend.dashboard import dashboard_router
+
 # Initialize FastAPI app
 app = FastAPI(
     title="AI Glasses Coach API",
@@ -84,6 +89,14 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include dashboard router
+app.include_router(dashboard_router)
+
+# Mount static files for dashboard
+FRONTEND_PATH = Path(__file__).parent.parent / "frontend" / "static"
+if FRONTEND_PATH.exists():
+    app.mount("/static", StaticFiles(directory=str(FRONTEND_PATH)), name="static")
 
 
 # ==================== Timing Middleware ====================

@@ -1,0 +1,15 @@
+# WHAM Desktop Quick Capture - Dependencies
+
+# Required
+requests>=2.28.0
+
+# System tray (optional but recommended)
+pystray>=0.19.0
+pillow>=9.0.0
+
+# Global hotkeys (optional, needs sudo on Linux)
+keyboard>=0.13.5
+
+# Voice capture (optional)
+pyaudio>=0.2.13
+openai-whisper>=20231117

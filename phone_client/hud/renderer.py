@@ -1,10 +1,50 @@
 """
 HUD Renderer for Halo Glasses.
 Generates Lua code for the Halo display (640x400 OLED).
+
+================================================================================
+DEPRECATED - Use halo.oled_renderer.OLEDRenderer instead
+================================================================================
+
+This module will be REMOVED in v2.0. Migrate to the new renderer:
+
+MIGRATION GUIDE:
+----------------
+Old (this file):
+    from hud.renderer import HUDRenderer
+    renderer = HUDRenderer()
+    lua_code = renderer.render_text("Hello", 320, 200)
+    renderer.render_rect(0, 0, 640, 50, COLORS.primary)
+
+New (recommended):
+    from halo.oled_renderer import OLEDRenderer, OLEDColors
+    renderer = OLEDRenderer()
+    renderer.render_text("Hello", 320, 200, OLEDColors.PRIMARY)
+    renderer.render_card("Title", ["Content"], OLEDColors.PRIMARY)
+
+KEY DIFFERENCES:
+- New renderer uses OLEDColors (power-optimized color palette)
+- New renderer has automatic burn-in prevention
+- New renderer integrates with PowerManager for brightness
+- New renderer supports AnimationEngine for smooth transitions
+
+This file is maintained ONLY for backwards compatibility with existing code.
+New features will NOT be added here.
+================================================================================
 """
+import warnings
 from dataclasses import dataclass
 from typing import Optional, List
 from .colors import RGB, COLORS, rgb_to_lua, get_timer_color, get_streak_color
+
+
+def _deprecated_warning(feature: str = "HUDRenderer"):
+    """Issue deprecation warning."""
+    warnings.warn(
+        f"{feature} is deprecated. Use halo.oled_renderer.OLEDRenderer instead.",
+        DeprecationWarning,
+        stacklevel=3
+    )
 
 
 # Halo display constants
@@ -60,6 +100,23 @@ class HUDRenderer:
 
     The Halo uses a Lua scripting interface for graphics.
     This class builds Lua commands for common HUD elements.
+
+    .. deprecated::
+        Use :class:`halo.oled_renderer.OLEDRenderer` instead for:
+        - Power-aware color adjustment
+        - Advanced burn-in prevention
+        - Animation support
+        - Better performance
+
+        You can migrate by replacing::
+
+            from hud.renderer import HUDRenderer
+            renderer = HUDRenderer()
+
+        with::
+
+            from halo.oled_renderer import create_oled_renderer
+            renderer = create_oled_renderer(config)
     """
 
     def __init__(self, width: int = DISPLAY_WIDTH, height: int = DISPLAY_HEIGHT):
@@ -347,6 +404,27 @@ class HUDRenderer:
         self.text(message[:40], CENTER_X, CENTER_Y + 20, COLORS.text_secondary, FONT_SMALL, "center")
         self.show()
         return self.get_lua()
+
+
+# Factory function for migration
+def get_oled_renderer(config: dict = None, power_manager=None):
+    """
+    Get the new OLED renderer (recommended for new code).
+
+    Args:
+        config: Configuration dict
+        power_manager: Optional PowerManager instance
+
+    Returns:
+        OLEDRenderer instance
+
+    Example::
+
+        from hud.renderer import get_oled_renderer
+        renderer = get_oled_renderer(my_config)
+    """
+    from ..halo.oled_renderer import create_oled_renderer
+    return create_oled_renderer(config, power_manager)
 
 
 # Test

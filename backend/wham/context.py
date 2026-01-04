@@ -1,5 +1,5 @@
 """
-JARVIS Context Management
+WHAM Context Management
 
 Tracks session state, user performance, and conversation context
 for personalized, contextual responses.
@@ -112,9 +112,9 @@ class SessionStats:
             self.by_category[cat]["correct"] += 1
 
 
-class JarvisContext:
+class WHAMContext:
     """
-    Maintains conversation and session context for JARVIS personality.
+    Maintains conversation and session context for WHAM personality.
 
     Tracks:
     - User preferences and address style

@@ -1,5 +1,5 @@
 """
-JARVIS Performance Analyzer
+WHAM Performance Analyzer
 
 Analyzes user performance patterns and provides insights
 for adaptive difficulty and targeted feedback.

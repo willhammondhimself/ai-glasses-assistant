@@ -2,7 +2,7 @@
 Iron Man HUD System
 
 Full-color OLED display components for Brilliant Labs Halo AR glasses.
-Inspired by Tony Stark's Iron Man HUD with JARVIS integration.
+WHAM-integrated HUD display.
 
 Display specs:
 - Resolution: 640x400 pixels
@@ -11,7 +11,7 @@ Display specs:
 """
 
 from .colors import (
-    JARVIS_COLORS,
+    WHAM_COLORS,
     HUDColorScheme,
     get_timer_color,
     get_streak_color,
@@ -37,7 +37,7 @@ from .layouts import (
 
 __all__ = [
     # Colors
-    "JARVIS_COLORS",
+    "WHAM_COLORS",
     "HUDColorScheme",
     "get_timer_color",
     "get_streak_color",

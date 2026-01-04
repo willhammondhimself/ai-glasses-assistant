@@ -29,6 +29,7 @@ class PokerRecommendation:
     latency_ms: float   # API response time
     cost: float         # API cost for this analysis
     cached: bool        # Whether result was from cache
+    confidence: float = None  # AI confidence level (0.0-1.0)
 
 
 class LivePokerCoach:
@@ -192,7 +193,8 @@ class LivePokerCoach:
                 villain_type=villain_stats["type"],
                 latency_ms=latency,
                 cost=0.002,  # Just OCR cost
-                cached=True
+                cached=True,
+                confidence=cached_result.get("confidence")
             )
 
         # Step 4: Build prompt
@@ -232,7 +234,8 @@ class LivePokerCoach:
             villain_type=villain_stats["type"],
             latency_ms=latency,
             cost=0.009,  # OCR + DeepSeek
-            cached=False
+            cached=False,
+            confidence=parsed.get("confidence")
         )
 
         # Record in session
@@ -294,7 +297,8 @@ class LivePokerCoach:
                 villain_type=villain_stats["type"],
                 latency_ms=(time.perf_counter() - start) * 1000,
                 cost=0,
-                cached=True
+                cached=True,
+                confidence=cached.get("confidence")
             )
 
         # Build prompt
@@ -328,7 +332,8 @@ class LivePokerCoach:
             villain_type=villain_stats["type"],
             latency_ms=latency,
             cost=0.007,
-            cached=False
+            cached=False,
+            confidence=parsed.get("confidence")
         )
 
     def _parse_response(self, response: str) -> Dict[str, Any]:
@@ -337,7 +342,8 @@ class LivePokerCoach:
             "action": "FOLD",
             "sizing": "",
             "equity": 0.0,
-            "reasoning": ""
+            "reasoning": "",
+            "confidence": None
         }
 
         # Extract ACTION
@@ -364,6 +370,14 @@ class LivePokerCoach:
             lines = [l.strip() for l in response.split('\n') if l.strip()]
             if lines:
                 result["reasoning"] = lines[-1][:100]
+
+        # Extract CONFIDENCE (1-10 scale, convert to 0.0-1.0)
+        conf_match = re.search(r'CONFIDENCE:\s*(\d+)', response, re.IGNORECASE)
+        if conf_match:
+            conf_value = float(conf_match.group(1))
+            # Clamp to 1-10 range and convert to 0.0-1.0
+            conf_value = max(1, min(10, conf_value))
+            result["confidence"] = conf_value / 10.0
 
         return result
 

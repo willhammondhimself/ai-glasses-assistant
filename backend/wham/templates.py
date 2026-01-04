@@ -1,8 +1,8 @@
 """
-JARVIS Response Templates
+WHAM Response Templates
 
-All phrases and templates for JARVIS-style responses.
-Designed to feel like Tony Stark's AI assistant.
+All phrases and templates for WHAM-style responses.
+Personal AI assistant personality for Will.
 """
 
 import random
@@ -127,7 +127,7 @@ TREND_COMMENTS = {
 
 
 class ResponseTemplates:
-    """Template manager for JARVIS responses."""
+    """Template manager for WHAM responses."""
 
     def get_greeting(self, time_period: str, address: str) -> str:
         """Get appropriate greeting for time of day."""

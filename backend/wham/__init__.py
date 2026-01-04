@@ -1,19 +1,19 @@
 """
-JARVIS Personality Layer
+WHAM Personality Layer
 
-Tony Stark-style AI personality for AR glasses coach.
+Will's Helpful Assistant Module - AI personality for AR glasses coach.
 Transforms dry responses into engaging, witty interactions.
 """
 
-from .personality import JarvisPersonality
+from .personality import WHAMPersonality
 from .templates import ResponseTemplates, GREETINGS, SPEED_FEEDBACK, STREAK_MILESTONES
-from .context import JarvisContext, SessionStats
+from .context import WHAMContext, SessionStats
 from .performance import PerformanceAnalyzer
 
 __all__ = [
-    "JarvisPersonality",
+    "WHAMPersonality",
     "ResponseTemplates",
-    "JarvisContext",
+    "WHAMContext",
     "SessionStats",
     "PerformanceAnalyzer",
     "GREETINGS",

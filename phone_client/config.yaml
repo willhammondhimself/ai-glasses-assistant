@@ -96,3 +96,106 @@ colors:
   warning: [255, 191, 0]      # Amber
   error: [255, 64, 64]        # Red
   text: [255, 255, 255]       # White
+
+cost_limits:
+  daily: 5.00           # Daily budget cap
+  poker_session: 2.50   # Per poker session limit
+  poker_review: 0.50    # Post-session review limit
+
+voice_shortcuts:
+  enabled: true
+  wake_words: ["wham", "hey wham"]
+
+session_summary:
+  auto_generate: true
+  save_to_file: true
+  display_on_shutdown: true
+  save_dir: "./logs/summaries"
+
+confidence_display:
+  show_bars: true
+  warn_below: 0.6       # Show warning color if confidence < 60%
+
+# Power management
+power:
+  auto_manage: true     # Automatically adjust based on battery
+  thresholds:
+    full: 80            # FULL mode when battery > 80%
+    balanced: 30        # BALANCED mode when battery > 30%
+    saver: 15           # SAVER mode when battery > 15%
+    critical: 5         # CRITICAL mode when battery < 15%
+  brightness:
+    full: 1.0           # 100% brightness in FULL mode
+    balanced: 0.85      # 85% brightness in BALANCED mode
+    saver: 0.60         # 60% brightness in SAVER mode
+    critical: 0.40      # 40% brightness in CRITICAL mode
+
+# Smart notifications
+notifications:
+  enabled: true
+  sound: false          # AR glasses typically silent
+  vibration: true       # Haptic feedback
+  max_queue: 10         # Maximum queued notifications
+  auto_dismiss_ms: 5000 # Auto-dismiss after 5 seconds
+  rate_limit_per_min: 30  # Prevent notification spam
+  do_not_disturb_schedule:
+    enabled: false
+    start: "22:00"      # DND start time
+    end: "08:00"        # DND end time
+
+# Animation settings
+animations:
+  enabled: true
+  duration_multiplier: 1.0  # 0.5 = faster, 2.0 = slower
+  reduce_motion: false      # Accessibility option
+  target_fps: 30            # Animation frame rate
+
+# Morning Briefing settings
+morning_briefing:
+  auto_trigger: true
+  trigger_start: "06:00"    # Auto-trigger window start
+  trigger_end: "10:00"      # Auto-trigger window end
+  include_weather: true
+  include_commute: true
+  include_news: false
+  max_items: 10
+
+# Quick Capture settings
+quick_capture:
+  auto_tag: true
+  auto_categorize: true
+  max_voice_length_s: 60
+  default_reminder_delay_min: 30
+  storage_dir: "./captures"
+
+# Focus Mode (Pomodoro) settings
+focus_mode:
+  focus_duration_min: 25    # Standard Pomodoro length
+  short_break_min: 5
+  long_break_min: 15
+  long_break_interval: 4    # Long break after N pomodoros
+  auto_start_break: true
+  play_sounds: true
+  distraction_blocking: true
+
+# Context Memory settings
+context_memory:
+  max_memories: 10000
+  auto_extract_entities: true
+  relevance_threshold: 0.3
+  cleanup_interval_days: 30
+  storage_dir: "./memory"
+
+# Daily Challenges settings
+daily_challenges:
+  daily_count: 3
+  streak_bonus: 0.1         # 10% XP bonus per streak day
+  storage_dir: "./challenges"
+
+# Voice shortcuts (batch commands)
+voice_shortcuts:
+  enabled: true
+  commands:
+    work_mode: ["focus on work", "do not disturb"]
+    study_mode: ["focus on studying", "do not disturb"]
+    break_time: ["end focus", "notifications on"]

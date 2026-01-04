@@ -83,6 +83,7 @@ class EdithScanner:
 
         # Detection state
         self._battery_saver = False
+        self._paused = False
         self._current_fps = 1.0 / config.scan_interval_seconds
 
     async def start(self):
@@ -115,10 +116,30 @@ class EdithScanner:
             self._current_fps = 1.0 / self.config.scan_interval_seconds
         logger.info(f"Battery saver: {enabled}, FPS: {self._current_fps}")
 
+    async def pause(self):
+        """Pause scanning without stopping."""
+        self._paused = True
+        logger.info("EDITH paused")
+
+    async def resume(self):
+        """Resume scanning."""
+        self._paused = False
+        logger.info("EDITH resumed")
+
+    @property
+    def is_paused(self) -> bool:
+        """Check if EDITH is paused."""
+        return self._paused
+
     async def _scan_loop(self):
         """Main scanning loop."""
         while self._running:
             try:
+                # Check if paused
+                if self._paused:
+                    await asyncio.sleep(0.5)
+                    continue
+
                 interval = self.config.battery_saver_interval if self._battery_saver else self.config.scan_interval_seconds
                 await asyncio.sleep(interval)
 
