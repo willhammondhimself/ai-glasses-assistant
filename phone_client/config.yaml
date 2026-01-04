@@ -1,9 +1,9 @@
-# JARVIS Phone Client Configuration
-# For Brilliant Labs Halo AR Glasses
+# WHAM Phone Client Configuration
+# Will Hammond's Augmented Mind - For Brilliant Labs Halo AR Glasses
 
 user:
   name: "Will"
-  address: "sir"  # How JARVIS addresses you
+  address: ""  # WHAM uses direct address style
   locations:
     - "Claremont, CA"
     - "Santa Barbara, CA"
@@ -22,15 +22,18 @@ hardware:
 voice:
   model: "small.en"  # Whisper model: tiny.en, base.en, small.en
   wake_words:
-    - "jarvis"
-    - "hey jarvis"
+    - "wham"
+    - "hey wham"
     - "mental math"
-  tts_voice: "british_male"
-  tts_rate: 180  # Words per minute
+    - "poker"
+  tts_voice: "american_male"
+  tts_rate: 200  # Words per minute (faster, more direct)
 
 personality:
-  humor_level: "high"  # low, medium, high
-  formality: "butler"  # casual, professional, butler
+  name: "WHAM"
+  full_name: "Will Hammond's Augmented Mind"
+  humor_level: "low"  # low, medium, high - WHAM is direct
+  formality: "direct"  # casual, professional, direct
   encouragement: true
   celebrate_streaks: true
 
@@ -52,15 +55,30 @@ mental_math:
     - squares
   streak_milestones: [3, 5, 7, 10, 15, 20, 25, 50]
 
+poker:
+  # Live poker coaching settings
+  stakes: "$0.25/$0.50"
+  bb_value: 0.50
+  session_dir: "./poker_sessions"
+  # Cost limits
+  max_session_cost: 2.50  # Stop at $2.50 API cost
+  warn_at_cost: 1.50      # Warn at $1.50
+  # Decision timing
+  analysis_timeout_s: 10  # Max wait for AI response
+  # Caching
+  cache_enabled: true
+  cache_ttl_hours: 24
+
 edith:
   enabled: true
   scan_interval_seconds: 5
   battery_saver_interval: 15  # When battery < 30%
   detection_types:
-    - equations
+    - equation
     - code
     - text
     - faces
+    - poker_cards
   stare_threshold_ms: 1500  # 1.5 seconds to trigger suggestion
 
 display:
@@ -71,7 +89,7 @@ display:
   dim_after_seconds: 60
 
 colors:
-  # Iron Man / JARVIS palette (RGB)
+  # WHAM palette (RGB) - Clean, analytical
   primary: [0, 255, 255]      # Cyan
   accent: [50, 150, 255]      # Electric blue
   success: [0, 255, 128]      # Green-cyan

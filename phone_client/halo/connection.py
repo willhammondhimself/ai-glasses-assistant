@@ -349,12 +349,12 @@ async def main():
         # Test display
         await halo.send_lua('''
             frame.display.clear()
-            frame.display.text("JARVIS Online", 320, 200, {color="cyan", align="center"})
+            frame.display.text("WHAM Online", 320, 200, {color="cyan", align="center"})
             frame.display.show()
         ''')
 
         # Test TTS
-        await halo.speak("Systems online, sir.", block=True)
+        await halo.speak("WHAM online. Ready.", block=True)
 
         await asyncio.sleep(3)
         await halo.disconnect()

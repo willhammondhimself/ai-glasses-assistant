@@ -1,6 +1,6 @@
 """
-JARVIS Personality Engine.
-Context-aware AI companion with Tony Stark butler style.
+WHAM Personality Engine.
+Will Hammond's Augmented Mind - Direct, confident, analytical.
 """
 import time
 from dataclasses import dataclass, field
@@ -80,27 +80,24 @@ class SessionStats:
             self.phase = SessionPhase.ACTIVE
 
 
-class JarvisPersonality:
+class WHAMPersonality:
     """
-    JARVIS personality engine.
+    WHAM personality engine.
+    Will Hammond's Augmented Mind.
 
-    Provides context-aware responses based on:
-    - Session performance
-    - Time of day
-    - Location
-    - Streak status
-    - User history
+    Style: Direct, confident, analytical.
+    No "sir" - just "Will" or nothing.
     """
 
     def __init__(
         self,
         user_name: str = "Will",
-        address: str = "sir",
+        address: str = "",  # Not used in WHAM style
         location: Optional[str] = None,
-        humor_level: str = "high"
+        humor_level: str = "low"  # WHAM is focused, not chatty
     ):
         self.user_name = user_name
-        self.address = address
+        self.address = address  # Kept for compatibility
         self.location = location
         self.humor_level = humor_level
 
@@ -117,15 +114,7 @@ class JarvisPersonality:
 
     def get_greeting(self) -> str:
         """Get contextual greeting."""
-        greeting = Templates.get_greeting(self.user_name, self.address)
-
-        # Add location comment occasionally
-        if self.location and self.humor_level == "high":
-            loc_comment = Templates.get_location_comment(self.location)
-            if loc_comment:
-                greeting = f"{greeting} {loc_comment}"
-
-        return greeting
+        return Templates.get_greeting(self.user_name)
 
     def get_mode_activation(self, mode: str, difficulty: int = 2) -> str:
         """Get mode activation message."""
@@ -139,7 +128,7 @@ class JarvisPersonality:
         expected_answer: Optional[float] = None
     ) -> Dict[str, str]:
         """
-        Process an answer and generate JARVIS response.
+        Process an answer and generate WHAM response.
 
         Returns dict with:
             - feedback: Main feedback line
@@ -157,13 +146,13 @@ class JarvisPersonality:
 
             # Speed feedback
             response["feedback"] = Templates.get_speed_feedback(
-                time_ms, target_ms, self.address
+                time_ms, target_ms, name=self.user_name
             )
 
             # Check for streak milestone
             streak = self.stats.current_streak
             if streak in [3, 5, 7, 10, 15, 20, 25, 50] and streak > self._last_streak_milestone:
-                response["streak_message"] = Templates.get_streak_message(streak, self.address)
+                response["streak_message"] = Templates.get_streak_message(streak, name=self.user_name)
                 self._last_streak_milestone = streak
 
         else:
@@ -174,19 +163,17 @@ class JarvisPersonality:
 
             # Wrong answer feedback
             if expected_answer is not None:
-                response["feedback"] = Templates.get_wrong_answer_feedback(
-                    expected_answer, self.address
-                )
+                response["feedback"] = Templates.get_wrong_answer_feedback(expected_answer)
             else:
-                response["feedback"] = "Incorrect."
+                response["feedback"] = "Wrong."
 
             # Streak break message
             if had_streak:
                 response["streak_message"] = Templates.get_streak_break_message()
 
-            # Encouragement if struggling
+            # Encouragement if struggling (brief in WHAM style)
             if self.stats.error_streak >= 2:
-                response["encouragement"] = Templates.get_encouragement(self.address)
+                response["encouragement"] = Templates.get_encouragement()
 
         self._last_feedback = response["feedback"]
         return response
@@ -198,9 +185,7 @@ class JarvisPersonality:
         target_ms: float,
         expected_answer: Optional[float] = None
     ) -> str:
-        """
-        Get complete feedback string (combines all response parts).
-        """
+        """Get complete feedback string."""
         response = self.process_answer(correct, time_ms, target_ms, expected_answer)
 
         parts = [response["feedback"]]
@@ -212,9 +197,7 @@ class JarvisPersonality:
         return " ".join(parts)
 
     def get_session_summary(self) -> Dict:
-        """
-        Get session summary with stats and JARVIS commentary.
-        """
+        """Get session summary with stats and WHAM commentary."""
         stats = self.stats
 
         # Calculate grade
@@ -234,15 +217,15 @@ class JarvisPersonality:
         # Session duration
         duration_s = time.time() - self._session_start
 
-        # JARVIS commentary
-        commentary = Templates.get_session_end(stats.accuracy, self.address)
+        # WHAM commentary
+        commentary = Templates.get_session_end(stats.accuracy)
 
         # Extra commentary based on performance
         extras = []
         if stats.best_streak >= 20:
-            extras.append(f"Peak streak of {stats.best_streak}. Impressive.")
+            extras.append(f"Peak streak: {stats.best_streak}. Elite.")
         if stats.avg_time_ms < 2000 and stats.total_problems >= 10:
-            extras.append("Sub-2-second average. Trading floor speed.")
+            extras.append("Sub-2s average. Trading floor speed.")
 
         return {
             "total": stats.total_problems,
@@ -259,19 +242,15 @@ class JarvisPersonality:
 
     def get_idle_message(self) -> str:
         """Get message for idle state."""
-        hour = datetime.now().hour
-
         if self.stats.total_problems > 0:
-            # Mid-session idle
-            return f"Awaiting input, {self.address}."
+            return "Waiting."
         else:
-            # Start of session
-            return "Ready when you are."
+            return "Ready."
 
     def get_comeback_message(self) -> str:
         """Message after recovering from errors."""
         if self.stats.current_streak == 3 and self.stats.error_streak == 0:
-            return f"Back on track, {self.address}."
+            return "Back on track."
         return ""
 
     @property
@@ -291,18 +270,18 @@ class JarvisPersonality:
         return self.stats.phase == SessionPhase.STRUGGLING
 
 
+# Alias for backwards compatibility
+JarvisPersonality = WHAMPersonality
+
+
 # Test
 if __name__ == "__main__":
-    print("=== JARVIS Personality Test ===\n")
+    print("=== WHAM Personality Test ===\n")
 
-    jarvis = JarvisPersonality(
-        user_name="Will",
-        address="sir",
-        location="Claremont, CA"
-    )
+    wham = WHAMPersonality(user_name="Will")
 
-    print(f"Greeting: {jarvis.get_greeting()}")
-    print(f"Mode activation: {jarvis.get_mode_activation('mental_math', 2)}")
+    print(f"Greeting: {wham.get_greeting()}")
+    print(f"Mode activation: {wham.get_mode_activation('mental_math', 2)}")
     print()
 
     # Simulate a session
@@ -322,12 +301,12 @@ if __name__ == "__main__":
     ]
 
     for i, (correct, time_ms, target) in enumerate(test_results, 1):
-        feedback = jarvis.get_full_feedback(correct, time_ms, target, 42 if not correct else None)
+        feedback = wham.get_full_feedback(correct, time_ms, target, 42 if not correct else None)
         print(f"Q{i}: {'Correct' if correct else 'Wrong'} in {time_ms}ms")
-        print(f"    JARVIS: {feedback}")
+        print(f"    WHAM: {feedback}")
         print()
 
     print("=== Session Summary ===")
-    summary = jarvis.get_session_summary()
+    summary = wham.get_session_summary()
     for key, value in summary.items():
         print(f"  {key}: {value}")

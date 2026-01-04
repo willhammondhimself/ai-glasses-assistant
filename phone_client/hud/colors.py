@@ -1,6 +1,6 @@
 """
-JARVIS Color System for Halo HUD.
-Iron Man inspired cyan/blue palette with semantic colors.
+WHAM Color System for Halo HUD.
+Clean, analytical cyan/blue palette with semantic colors.
 """
 from dataclasses import dataclass
 from typing import Tuple
@@ -10,11 +10,11 @@ RGB = Tuple[int, int, int]
 
 
 @dataclass
-class JarvisColors:
-    """Iron Man / JARVIS color palette."""
+class WHAMColors:
+    """WHAM color palette - Clean and analytical."""
 
     # Primary colors
-    primary: RGB = (0, 255, 255)          # Cyan - signature JARVIS color
+    primary: RGB = (0, 255, 255)          # Cyan - signature WHAM color
     primary_bright: RGB = (100, 255, 255)  # Bright cyan for emphasis
     primary_dim: RGB = (0, 180, 200)       # Dimmed cyan for backgrounds
 
@@ -47,7 +47,10 @@ class JarvisColors:
 
 
 # Default instance
-COLORS = JarvisColors()
+COLORS = WHAMColors()
+
+# Backwards compatibility
+JarvisColors = WHAMColors
 
 
 def rgb_to_hex(color: RGB) -> str:

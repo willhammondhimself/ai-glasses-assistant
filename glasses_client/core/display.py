@@ -30,6 +30,14 @@ HALO_COLORS = {
     "quant_timer": (255, 140, 0),     # Orange
     "quant_streak": (255, 215, 0),    # Gold
 
+    # Meeting Mode (WHAM)
+    "meeting": (78, 205, 196),        # Teal/cyan - calm, professional
+    "suggestion": (149, 165, 166),    # Silver - subtle suggestion
+    "recording": (255, 107, 107),     # Coral - recording indicator
+    "processing": (255, 230, 109),    # Yellow - thinking
+    "negotiation": (255, 177, 66),    # Orange - negotiation alert
+    "alert": (255, 107, 129),         # Pink-red - important alert
+
     # General
     "info": (200, 200, 200),          # Gray
     "warning": (255, 217, 61),        # Yellow
@@ -376,6 +384,160 @@ class DisplayController:
         slide = DisplaySlide(
             lines=["[CAMERA]", "", message],
             color=HALO_COLORS["info"],
+            centered=True
+        )
+        await self.render_slide(slide)
+
+    # Meeting Mode Display Methods
+
+    async def show_meeting_status(
+        self,
+        status: str,
+        message: str = "",
+        meeting_type: str = ""
+    ):
+        """
+        Show meeting mode status.
+
+        Args:
+            status: Current status (listening, recording, processing)
+            message: Optional message
+            meeting_type: Type of meeting (general, negotiation, etc.)
+        """
+        lines = [f"[WHAM - {status.upper()}]"]
+
+        if meeting_type:
+            lines.append(f"Mode: {meeting_type}")
+
+        if message:
+            lines.append("")
+            lines.append(message)
+
+        color_map = {
+            "listening": HALO_COLORS["meeting"],
+            "recording": HALO_COLORS["recording"],
+            "processing": HALO_COLORS["processing"],
+        }
+        color = color_map.get(status.lower(), HALO_COLORS["meeting"])
+
+        slide = DisplaySlide(
+            lines=lines,
+            color=color,
+            centered=True
+        )
+        await self.render_slide(slide)
+
+    async def show_meeting_suggestion(
+        self,
+        suggestion: str,
+        trigger: str = "double_tap",
+        suggestion_type: str = "quick_response",
+        alternatives: List[str] = None,
+        tactical_notes: str = None
+    ):
+        """
+        Show WHAM's meeting suggestion.
+
+        Args:
+            suggestion: The main suggestion text
+            trigger: How triggered (double_tap or voice_command)
+            suggestion_type: Type of suggestion
+            alternatives: Optional alternative suggestions
+            tactical_notes: Optional tactical notes
+        """
+        # Build lines
+        lines = []
+
+        # Header
+        if trigger == "double_tap":
+            lines.append("[QUICK HELP]")
+        else:
+            lines.append("[WHAM SUGGESTS]")
+
+        # Wrap suggestion to fit display
+        words = suggestion.split()
+        current_line = ""
+        for word in words:
+            if len(current_line) + len(word) + 1 <= self.MAX_CHARS:
+                current_line += (" " if current_line else "") + word
+            else:
+                if current_line:
+                    lines.append(current_line)
+                current_line = word
+
+        if current_line:
+            lines.append(current_line)
+
+        # Add tactical note if present and room available
+        if tactical_notes and len(lines) < 4:
+            lines.append(f"TIP: {tactical_notes[:35]}...")
+
+        # Determine color based on type
+        type_colors = {
+            "negotiation": HALO_COLORS["negotiation"],
+            "fact_check": HALO_COLORS["alert"],
+            "tactical_advice": HALO_COLORS["warning"],
+        }
+        color = type_colors.get(suggestion_type, HALO_COLORS["suggestion"])
+
+        slide = DisplaySlide(
+            lines=lines[:4],  # Max 4 lines
+            color=color,
+            centered=False  # Left-align for readability
+        )
+        await self.render_slide(slide)
+
+    async def show_meeting_transcript(
+        self,
+        speaker: str,
+        text: str,
+        is_user: bool = False
+    ):
+        """
+        Show a transcript update (subtle overlay).
+
+        Args:
+            speaker: Speaker identifier
+            text: Transcript text
+            is_user: True if this is the user speaking
+        """
+        prefix = "You" if is_user else speaker
+        truncated = text[:35] + "..." if len(text) > 35 else text
+
+        slide = DisplaySlide(
+            lines=[f"[{prefix}]:", truncated],
+            color=HALO_COLORS["info"],
+            centered=False
+        )
+        await self.render_slide(slide)
+
+    async def show_meeting_summary(
+        self,
+        suggestions_given: int,
+        duration_seconds: float,
+        meeting_type: str = "general"
+    ):
+        """
+        Show meeting summary at end of session.
+
+        Args:
+            suggestions_given: Number of suggestions provided
+            duration_seconds: Meeting duration in seconds
+            meeting_type: Type of meeting
+        """
+        minutes = int(duration_seconds // 60)
+        seconds = int(duration_seconds % 60)
+
+        lines = [
+            "[MEETING ENDED]",
+            f"Duration: {minutes}m {seconds}s",
+            f"Suggestions: {suggestions_given}",
+            "Good work, Will."
+        ]
+
+        slide = DisplaySlide(
+            lines=lines,
+            color=HALO_COLORS["result_green"],
             centered=True
         )
         await self.render_slide(slide)

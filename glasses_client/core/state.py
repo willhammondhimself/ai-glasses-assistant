@@ -22,6 +22,7 @@ class AppMode(Enum):
     CAMERA_SOLVE = "camera_solve"
     CODE_DEBUG = "code_debug"
     CONTENT = "content"
+    MEETING = "meeting"
 
 
 @dataclass

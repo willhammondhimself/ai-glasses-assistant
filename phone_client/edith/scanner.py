@@ -195,31 +195,69 @@ class EdithScanner:
         """
         Detect mathematical equations in frame.
 
-        Uses simple heuristics:
-        - Look for mathematical symbols (+, -, x, /, =, etc.)
-        - Check for number patterns
+        Uses OpenCV-based pattern detection from detectors module.
         """
-        # Placeholder - would use OCR + pattern matching
-        # This is where you'd integrate Tesseract or similar
+        try:
+            from .detectors import EquationDetector
+            detector = EquationDetector()
+            result = detector.detect(frame)
+
+            if result and result.detected:
+                return [Detection(
+                    type=DetectionType.EQUATION,
+                    confidence=result.confidence,
+                    bounding_box=result.bounding_box or (0, 0, frame.shape[1], frame.shape[0]),
+                    content=""
+                )]
+        except Exception as e:
+            logger.debug(f"Equation detector error: {e}")
+
         return []
 
     def _detect_code(self, frame) -> List[Detection]:
         """
         Detect code snippets in frame.
 
-        Heuristics:
-        - Monospace font detection
-        - Indentation patterns
-        - Syntax keywords
+        Uses OpenCV-based dark background and structure detection.
         """
-        # Placeholder - would use OCR + code pattern detection
+        try:
+            from .detectors import CodeDetector
+            detector = CodeDetector()
+            result = detector.detect(frame)
+
+            if result and result.detected:
+                return [Detection(
+                    type=DetectionType.CODE,
+                    confidence=result.confidence,
+                    bounding_box=result.bounding_box or (0, 0, frame.shape[1], frame.shape[0]),
+                    content=""
+                )]
+        except Exception as e:
+            logger.debug(f"Code detector error: {e}")
+
         return []
 
     def _detect_text(self, frame) -> List[Detection]:
         """
         Detect general text in frame.
+
+        Uses OpenCV-based paragraph structure detection.
         """
-        # Placeholder - would use OCR
+        try:
+            from .detectors import TextDetector
+            detector = TextDetector()
+            result = detector.detect(frame)
+
+            if result and result.detected:
+                return [Detection(
+                    type=DetectionType.TEXT,
+                    confidence=result.confidence,
+                    bounding_box=result.bounding_box or (0, 0, frame.shape[1], frame.shape[0]),
+                    content=""
+                )]
+        except Exception as e:
+            logger.debug(f"Text detector error: {e}")
+
         return []
 
     def _detect_faces(self, frame) -> List[Detection]:

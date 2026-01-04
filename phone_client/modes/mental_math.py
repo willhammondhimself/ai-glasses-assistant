@@ -9,7 +9,7 @@ from typing import Optional, Callable, Awaitable
 from enum import Enum
 
 from ..local_engines.mental_math import MentalMathEngine, MathProblem, AnswerResult
-from ..jarvis.personality import JarvisPersonality
+from ..wham.personality import WHAMPersonality
 from ..hud.renderer import HUDRenderer
 
 
@@ -40,20 +40,20 @@ class MentalMathMode:
     Runs a high-speed mental math training session with:
     - Instant problem generation (local, no API)
     - Millisecond-precision timing
-    - JARVIS personality feedback
+    - WHAM personality feedback
     - Real-time HUD updates
     """
 
     def __init__(
         self,
         config: DrillConfig,
-        jarvis: JarvisPersonality,
+        wham: WHAMPersonality,
         renderer: HUDRenderer,
         send_display: Callable[[str], Awaitable[bool]],
         speak: Callable[[str], Awaitable[bool]],
     ):
         self.config = config
-        self.jarvis = jarvis
+        self.wham = wham
         self.renderer = renderer
         self.send_display = send_display
         self.speak = speak
@@ -71,12 +71,12 @@ class MentalMathMode:
         Start the mental math drill.
         Returns the activation message.
         """
-        self.jarvis.reset_session()
+        self.wham.reset_session()
         self.state = DrillState.IDLE
         self._problems_completed = 0
 
         # Activation message
-        message = self.jarvis.get_mode_activation("mental_math", self.config.difficulty)
+        message = self.wham.get_mode_activation("mental_math", self.config.difficulty)
 
         if self.config.speak_feedback:
             await self.speak(message)
@@ -97,7 +97,7 @@ class MentalMathMode:
         self.state = DrillState.ENDED
 
         # Get session summary
-        summary = self.jarvis.get_session_summary()
+        summary = self.wham.get_session_summary()
 
         # Show summary on HUD
         lua = self.renderer.render_session_summary(
@@ -163,8 +163,8 @@ class MentalMathMode:
             elapsed_ms
         )
 
-        # Get JARVIS feedback
-        feedback = self.jarvis.get_full_feedback(
+        # Get WHAM feedback
+        feedback = self.wham.get_full_feedback(
             correct=result.correct,
             time_ms=elapsed_ms,
             target_ms=self._current_problem.time_target_ms,
@@ -177,7 +177,7 @@ class MentalMathMode:
             correct=result.correct,
             time_ms=elapsed_ms,
             feedback=feedback,
-            streak=self.jarvis.current_streak,
+            streak=self.wham.current_streak,
             answer=self._current_problem.answer if not result.correct else None
         )
         await self.send_display(lua)
@@ -204,7 +204,7 @@ class MentalMathMode:
             "expected": result.expected,
             "given": result.given,
             "feedback": feedback,
-            "streak": self.jarvis.current_streak,
+            "streak": self.wham.current_streak,
             "within_target": result.within_target,
         }
 
@@ -212,7 +212,7 @@ class MentalMathMode:
         """Handle unparseable answer."""
         feedback = f"Couldn't understand '{answer_text}'. Skipping."
 
-        self.jarvis.stats.record_incorrect()
+        self.wham.stats.record_incorrect()
 
         self.state = DrillState.SHOWING_RESULT
         lua = self.renderer.render_result(
@@ -255,7 +255,7 @@ class MentalMathMode:
             difficulty=self.config.difficulty,
             elapsed_ms=0,
             target_ms=self._current_problem.time_target_ms,
-            streak=self.jarvis.current_streak
+            streak=self.wham.current_streak
         )
         await self.send_display(lua)
 
@@ -274,7 +274,7 @@ class MentalMathMode:
                     difficulty=self.config.difficulty,
                     elapsed_ms=elapsed_ms,
                     target_ms=self._current_problem.time_target_ms,
-                    streak=self.jarvis.current_streak
+                    streak=self.wham.current_streak
                 )
                 await self.send_display(lua)
 
@@ -290,7 +290,7 @@ class MentalMathMode:
             return
 
         elapsed_ms = (time.perf_counter() - self._problem_start_time) * 1000
-        self.jarvis.stats.record_incorrect()
+        self.wham.stats.record_incorrect()
 
         feedback = f"Skipped. Answer was {self._current_problem.answer:g}."
 
@@ -340,13 +340,13 @@ async def test_drill():
         print(f"[SPEAK] {text}")
         return True
 
-    jarvis = JarvisPersonality()
+    wham = WHAMPersonality()
     renderer = HUDRenderer()
     config = DrillConfig(difficulty=2, problem_count=3, auto_advance=False)
 
     mode = MentalMathMode(
         config=config,
-        jarvis=jarvis,
+        wham=wham,
         renderer=renderer,
         send_display=mock_send,
         speak=mock_speak

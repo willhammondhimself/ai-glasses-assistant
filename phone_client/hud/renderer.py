@@ -230,7 +230,7 @@ class HUDRenderer:
         Shows:
             - Correct/Wrong indicator
             - Time taken
-            - JARVIS feedback
+            - WHAM feedback
             - Correct answer (if wrong)
         """
         self.clear()
@@ -254,7 +254,7 @@ class HUDRenderer:
             ans_text = f"Answer: {answer:g}"
             self.text(ans_text, CENTER_X, CENTER_Y + 40, COLORS.warning, FONT_SMALL, "center")
 
-        # JARVIS feedback (bottom)
+        # WHAM feedback (bottom)
         # Truncate if too long
         if len(feedback) > 45:
             feedback = feedback[:42] + "..."
@@ -320,7 +320,7 @@ class HUDRenderer:
         """
         self.clear()
 
-        # JARVIS greeting
+        # WHAM greeting
         self.text(greeting, CENTER_X, CENTER_Y - 20, COLORS.primary, FONT_MEDIUM, "center")
 
         # Time
@@ -335,7 +335,7 @@ class HUDRenderer:
     def render_connecting(self) -> str:
         """Render connecting screen."""
         self.clear()
-        self.text("JARVIS", CENTER_X, CENTER_Y - 30, COLORS.primary, FONT_LARGE, "center")
+        self.text("WHAM", CENTER_X, CENTER_Y - 30, COLORS.primary, FONT_LARGE, "center")
         self.text("Connecting...", CENTER_X, CENTER_Y + 30, COLORS.text_dim, FONT_SMALL, "center")
         self.show()
         return self.get_lua()

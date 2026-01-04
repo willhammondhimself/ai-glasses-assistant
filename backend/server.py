@@ -62,6 +62,9 @@ from backend.router import (
 # Import WebSocket manager and handlers
 from backend.websocket import ws_manager, MentalMathHandler
 
+# Import meeting mode handler
+from backend.meeting import meeting_handler
+
 # Import AR response models and formatters
 from backend.models import PaginatedResponse, ColorScheme, Slide
 from backend.formatters import MathSlideBuilder, QuantSlideBuilder
@@ -444,6 +447,7 @@ async def health_check():
             "chemistry": "available",
             "biology": "available",
             "statistics": "available",
+            "meeting": "available",
             "quant": {
                 "mental_math": "available",
                 "probability": "available",
@@ -1351,6 +1355,33 @@ async def mental_math_websocket(websocket: WebSocket, session_id: str):
     """
     topic = f"mental-math:{session_id}"
     await _mental_math_handler.handle_connection(
+        websocket=websocket,
+        topic=topic,
+        metadata={"session_id": session_id}
+    )
+
+
+@app.websocket("/ws/meeting/{session_id}")
+async def meeting_websocket(websocket: WebSocket, session_id: str):
+    """
+    WebSocket endpoint for WHAM meeting assistant mode.
+
+    Protocol:
+    Client sends:
+    - {"type": "meeting_start", "config": {...}}  - Start meeting session
+    - {"type": "meeting_end"}                      - End meeting session
+    - {"type": "audio_chunk", "audio": "base64", ...} - Audio for transcription
+    - {"type": "double_tap"}                       - Request quick suggestion
+    - {"type": "voice_command", "query": "...", "audio": "base64"} - Detailed help
+
+    Server sends:
+    - {"type": "status", "status": "meeting_started|processing|meeting_ended", ...}
+    - {"type": "transcript_update", "segment": {...}}
+    - {"type": "suggestion", "trigger": "double_tap|voice_command", "suggestion": {...}}
+    - {"type": "error", "message": "..."}
+    """
+    topic = f"meeting:{session_id}"
+    await meeting_handler.handle_connection(
         websocket=websocket,
         topic=topic,
         metadata={"session_id": session_id}
