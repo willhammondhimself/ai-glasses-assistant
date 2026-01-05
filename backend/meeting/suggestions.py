@@ -14,7 +14,7 @@ import time
 from typing import Optional, List, Dict, Any
 from dataclasses import dataclass
 
-import google.generativeai as genai
+from google import genai
 
 from .models import (
     SuggestionRequest,
@@ -100,29 +100,14 @@ class SuggestionEngine:
         if not api_key:
             logger.warning("GEMINI_API_KEY not set - suggestions will fail")
             self._available = False
+            self.client = None
         else:
-            genai.configure(api_key=api_key)
+            self.client = genai.Client(api_key=api_key)
             self._available = True
 
-        self._model_quick = None
-        self._model_full = None
-
-    def _get_model(self, is_quick: bool):
-        """Get the appropriate Gemini model."""
-        if is_quick:
-            if self._model_quick is None:
-                self._model_quick = genai.GenerativeModel(
-                    self.config.model,
-                    system_instruction=WHAM_SYSTEM_PROMPT,
-                )
-            return self._model_quick
-        else:
-            if self._model_full is None:
-                self._model_full = genai.GenerativeModel(
-                    self.config.model_full,
-                    system_instruction=WHAM_SYSTEM_PROMPT,
-                )
-            return self._model_full
+    def _get_model_name(self, is_quick: bool) -> str:
+        """Get the appropriate Gemini model name."""
+        return self.config.model if is_quick else self.config.model_full
 
     async def get_suggestion(
         self,
@@ -155,23 +140,28 @@ class SuggestionEngine:
             # Build the prompt
             prompt = self._build_prompt(context, trigger, user_query)
 
-            # Get model and configure
-            model = self._get_model(is_quick)
+            # Get model name
+            model_name = self._get_model_name(is_quick)
 
-            generation_config = genai.types.GenerationConfig(
-                temperature=self.config.temperature_quick if is_quick else self.config.temperature_full,
-                max_output_tokens=self.config.max_tokens_quick if is_quick else self.config.max_tokens_full,
-            )
-
-            # Set timeout
+            # Set configuration
+            temperature = self.config.temperature_quick if is_quick else self.config.temperature_full
+            max_tokens = self.config.max_tokens_quick if is_quick else self.config.max_tokens_full
             timeout = self.config.timeout_quick_s if is_quick else self.config.timeout_full_s
+
+            # Build config with system instruction
+            config = {
+                'temperature': temperature,
+                'max_output_tokens': max_tokens,
+                'system_instruction': WHAM_SYSTEM_PROMPT,
+            }
 
             # Generate response
             response = await asyncio.wait_for(
                 asyncio.to_thread(
-                    model.generate_content,
-                    prompt,
-                    generation_config=generation_config,
+                    self.client.models.generate_content,
+                    model=model_name,
+                    contents=prompt,
+                    config=config,
                 ),
                 timeout=timeout,
             )
@@ -338,14 +328,17 @@ TRANSCRIPT:
 Respond with only the JSON, no other text."""
 
         try:
-            model = self._get_model(is_quick=True)
+            model_name = self._get_model_name(is_quick=True)
+            config = {
+                'temperature': 0.2,
+                'max_output_tokens': 200,
+                'system_instruction': WHAM_SYSTEM_PROMPT,
+            }
             response = await asyncio.to_thread(
-                model.generate_content,
-                prompt,
-                generation_config=genai.types.GenerationConfig(
-                    temperature=0.2,
-                    max_output_tokens=200,
-                ),
+                self.client.models.generate_content,
+                model=model_name,
+                contents=prompt,
+                config=config,
             )
 
             import json

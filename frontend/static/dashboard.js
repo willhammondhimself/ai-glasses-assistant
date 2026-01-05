@@ -10,6 +10,12 @@ const API_BASE = '/dashboard/api';
 let currentCapturePage = 1;
 const capturesPerPage = 20;
 
+// WebSocket State
+let ws = null;
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 10;
+let heartbeatInterval = null;
+
 // ============================================================
 // Initialization
 // ============================================================
@@ -23,9 +29,12 @@ document.addEventListener('DOMContentLoaded', () => {
     loadTodayData();
     loadChallenges();
 
-    // Set up auto-refresh
-    setInterval(loadHealth, 30000); // Every 30 seconds
-    setInterval(loadTodayData, 60000); // Every minute
+    // Connect WebSocket for live updates
+    connectWebSocket();
+
+    // Set up auto-refresh as fallback (reduced frequency since we have WebSocket)
+    setInterval(loadHealth, 60000); // Every minute (was 30s)
+    setInterval(loadTodayData, 120000); // Every 2 minutes (was 1min)
 
     // Set up event listeners
     document.getElementById('captureSearch').addEventListener('input', debounce(loadCaptures, 300));
@@ -34,6 +43,189 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.key === 'Enter') searchMemory();
     });
 });
+
+// ============================================================
+// WebSocket Connection
+// ============================================================
+
+function connectWebSocket() {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/dashboard/ws/dashboard`;
+
+    console.log('Connecting to WebSocket:', wsUrl);
+    ws = new WebSocket(wsUrl);
+
+    ws.onopen = () => {
+        console.log('Dashboard WebSocket connected');
+        reconnectAttempts = 0;
+        updateConnectionStatus(true);
+
+        // Start heartbeat
+        if (heartbeatInterval) clearInterval(heartbeatInterval);
+        heartbeatInterval = setInterval(() => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'ping' }));
+            }
+        }, 30000);
+    };
+
+    ws.onmessage = (event) => {
+        try {
+            const message = JSON.parse(event.data);
+            handleWebSocketMessage(message);
+        } catch (e) {
+            console.error('Failed to parse WebSocket message:', e);
+        }
+    };
+
+    ws.onclose = (event) => {
+        console.log('WebSocket closed:', event.code, event.reason);
+        updateConnectionStatus(false);
+
+        if (heartbeatInterval) {
+            clearInterval(heartbeatInterval);
+            heartbeatInterval = null;
+        }
+
+        // Attempt reconnection with exponential backoff
+        if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+            reconnectAttempts++;
+            const delay = Math.min(3000 * reconnectAttempts, 30000);
+            console.log(`Reconnecting in ${delay}ms (attempt ${reconnectAttempts})`);
+            setTimeout(connectWebSocket, delay);
+        } else {
+            console.log('Max reconnection attempts reached');
+            document.getElementById('connectionStatus').textContent = 'Offline';
+        }
+    };
+
+    ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+    };
+}
+
+function updateConnectionStatus(connected) {
+    const dot = document.querySelector('.live-dot');
+    const status = document.getElementById('connectionStatus');
+
+    if (dot && status) {
+        if (connected) {
+            dot.classList.add('connected');
+            status.textContent = 'Live';
+        } else {
+            dot.classList.remove('connected');
+            status.textContent = reconnectAttempts > 0 ? 'Reconnecting...' : 'Connecting...';
+        }
+    }
+}
+
+function handleWebSocketMessage(message) {
+    console.log('WS message:', message.type, message.data);
+
+    switch (message.type) {
+        case 'connected':
+            console.log('Server confirmed connection');
+            break;
+
+        case 'session_update':
+            // Add new activity to timeline
+            addTimelineItem(message.data);
+            break;
+
+        case 'challenge_complete':
+            // Reload challenges and show notification
+            loadChallenges();
+            showNotification(`🏆 Challenge complete! +${message.data.xp} XP`);
+            break;
+
+        case 'cost_update':
+            // Update cost display
+            const costEl = document.getElementById('todayCost');
+            if (costEl && message.data.today !== undefined) {
+                costEl.textContent = `$${message.data.today.toFixed(2)}`;
+            }
+            break;
+
+        case 'capture_created':
+            // Refresh recent captures
+            loadTodayData();
+            showNotification(`📝 New capture saved`);
+            break;
+
+        case 'pong':
+            // Heartbeat acknowledged
+            break;
+
+        case 'edith_status':
+            // Update EDITH vision status
+            const edithStatus = document.getElementById('edithStatus');
+            const edithMode = document.getElementById('edithMode');
+            const edithPill = document.querySelector('.edith-pill');
+
+            if (edithStatus && edithMode && edithPill) {
+                if (message.data.active) {
+                    edithMode.textContent = message.data.current_detection || 'Scanning';
+                    edithPill.classList.add('active');
+                } else {
+                    edithMode.textContent = 'Idle';
+                    edithPill.classList.remove('active');
+                }
+            }
+            break;
+
+        default:
+            console.log('Unknown message type:', message.type);
+    }
+}
+
+function addTimelineItem(data) {
+    const timeline = document.getElementById('activityTimeline');
+    if (!timeline) return;
+
+    // Remove "No activities" message if present
+    const emptyMsg = timeline.querySelector('.empty');
+    if (emptyMsg) emptyMsg.remove();
+
+    const item = document.createElement('div');
+    item.className = 'timeline-item new';
+    item.innerHTML = `
+        <div class="timeline-icon">${getActivityIcon(data.session_type || data.type)}</div>
+        <div class="timeline-content">
+            <div class="timeline-time">${formatTime(new Date().toISOString())}</div>
+            <div class="timeline-desc">${data.description || data.session_type || 'Activity'}</div>
+        </div>
+    `;
+
+    // Insert at top of timeline
+    if (timeline.firstChild) {
+        timeline.insertBefore(item, timeline.firstChild);
+    } else {
+        timeline.appendChild(item);
+    }
+
+    // Remove highlight after animation
+    setTimeout(() => item.classList.remove('new'), 500);
+
+    // Limit timeline items (remove old ones)
+    const items = timeline.querySelectorAll('.timeline-item');
+    if (items.length > 20) {
+        items[items.length - 1].remove();
+    }
+}
+
+function showNotification(message) {
+    const toast = document.createElement('div');
+    toast.className = 'toast-notification';
+    toast.textContent = message;
+    document.body.appendChild(toast);
+
+    // Remove after animation
+    setTimeout(() => {
+        if (toast.parentNode) {
+            toast.remove();
+        }
+    }, 3000);
+}
 
 // ============================================================
 // Tab Navigation
@@ -65,6 +257,21 @@ function initTabs() {
                     break;
                 case 'opponents':
                     loadOpponents();
+                    break;
+                case 'suggestions':
+                    loadSuggestions();
+                    break;
+                case 'research':
+                    loadResearch();
+                    break;
+                case 'skills':
+                    loadSkills();
+                    break;
+                case 'academic':
+                    // Academic tab loaded on demand via tool buttons
+                    break;
+                case 'poker-lab':
+                    loadPokerSessions();
                     break;
             }
         });
@@ -273,42 +480,112 @@ async function loadAnalytics() {
     }
 }
 
+// Store chart instance for cleanup
+let costChartInstance = null;
+
 function renderCostChart(days) {
     const canvas = document.getElementById('costChart');
-    const ctx = canvas.getContext('2d');
+    if (!canvas) return;
 
-    // Clear canvas
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // Destroy existing chart if any
+    if (costChartInstance) {
+        costChartInstance.destroy();
+        costChartInstance = null;
+    }
 
-    // Simple bar chart
-    const padding = 40;
-    const width = canvas.width - padding * 2;
-    const height = canvas.height - padding * 2;
+    // Check if Chart.js is available
+    if (typeof Chart === 'undefined') {
+        // Fallback to simple canvas rendering
+        renderCostChartFallback(canvas, days);
+        return;
+    }
 
     // Reverse to show oldest first
     const sortedDays = [...days].reverse();
 
+    costChartInstance = new Chart(canvas, {
+        type: 'line',
+        data: {
+            labels: sortedDays.map(d => formatDate(d.date)),
+            datasets: [{
+                label: 'Daily Cost ($)',
+                data: sortedDays.map(d => d.stats.total_cost),
+                borderColor: '#6366f1',
+                backgroundColor: 'rgba(99, 102, 241, 0.15)',
+                tension: 0.4,
+                fill: true,
+                pointBackgroundColor: '#6366f1',
+                pointBorderColor: '#fff',
+                pointRadius: 4,
+                pointHoverRadius: 6
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                intersect: false,
+                mode: 'index'
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: 'rgba(26, 26, 36, 0.95)',
+                    titleColor: '#fff',
+                    bodyColor: '#a0a0b0',
+                    borderColor: 'rgba(255,255,255,0.1)',
+                    borderWidth: 1,
+                    padding: 12,
+                    displayColors: false,
+                    callbacks: {
+                        label: (ctx) => `Cost: $${ctx.parsed.y.toFixed(2)}`
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    grid: { color: 'rgba(255, 255, 255, 0.06)' },
+                    ticks: {
+                        color: '#606070',
+                        callback: (value) => '$' + value.toFixed(2)
+                    }
+                },
+                x: {
+                    grid: { color: 'rgba(255, 255, 255, 0.06)' },
+                    ticks: { color: '#606070' }
+                }
+            }
+        }
+    });
+}
+
+function renderCostChartFallback(canvas, days) {
+    // Simple canvas fallback if Chart.js isn't loaded
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const padding = 40;
+    const width = canvas.width - padding * 2;
+    const height = canvas.height - padding * 2;
+    const sortedDays = [...days].reverse();
     const maxCost = Math.max(...sortedDays.map(d => d.stats.total_cost), 5);
     const barWidth = width / sortedDays.length - 10;
 
-    // Draw bars
     sortedDays.forEach((day, i) => {
         const x = padding + i * (barWidth + 10);
         const barHeight = (day.stats.total_cost / maxCost) * height;
         const y = padding + height - barHeight;
 
-        // Bar
         ctx.fillStyle = '#6366f1';
         ctx.fillRect(x, y, barWidth, barHeight);
 
-        // Label
         ctx.fillStyle = '#a0a0b0';
         ctx.font = '11px sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText(formatDate(day.date), x + barWidth / 2, canvas.height - 10);
     });
 
-    // Y axis labels
     ctx.fillStyle = '#606070';
     ctx.textAlign = 'right';
     ctx.fillText('$0', padding - 5, padding + height);
@@ -480,6 +757,1040 @@ async function loadOpponents() {
         }
     } catch (error) {
         console.error('Failed to load opponents:', error);
+    }
+}
+
+// ============================================================
+// Suggestions Tab
+// ============================================================
+
+async function loadSuggestions() {
+    try {
+        const suggestions = await api('/suggestions');
+        const container = document.getElementById('suggestionsContent');
+
+        if (suggestions.length === 0) {
+            container.innerHTML = `
+                <div class="empty">
+                    <p>No suggestions right now.</p>
+                    <p class="hint">Keep using WHAM to build usage patterns!</p>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = suggestions.map(sugg => `
+            <div class="suggestion-card">
+                <div class="suggestion-header">
+                    <span class="suggestion-icon">💡</span>
+                    <span class="suggestion-title">${sugg.title}</span>
+                    <span class="suggestion-confidence">${Math.round(sugg.confidence * 100)}% confident</span>
+                </div>
+                <div class="suggestion-message">${sugg.message}</div>
+                ${sugg.action ? `
+                    <button class="suggestion-action" onclick="executeSuggestionAction('${sugg.action}')">
+                        Take Action
+                    </button>
+                ` : ''}
+            </div>
+        `).join('');
+    } catch (error) {
+        console.error('Failed to load suggestions:', error);
+        document.getElementById('suggestionsContent').innerHTML = `
+            <div class="empty">
+                <p>Failed to load suggestions.</p>
+                <p class="hint">Check console for details.</p>
+            </div>
+        `;
+    }
+}
+
+function executeSuggestionAction(action) {
+    console.log('Executing suggestion action:', action);
+    showNotification(`Action: ${action.replace(/_/g, ' ')}`);
+
+    // Could integrate with desktop app or trigger API calls
+    // For now, just show acknowledgment
+}
+
+// ============================================================
+// Research Tab (Phase 4)
+// ============================================================
+
+async function loadResearch() {
+    try {
+        const response = await api('/research/history?days=7');
+        const container = document.getElementById('researchContent');
+
+        if (response.queries.length === 0) {
+            container.innerHTML = `
+                <div class="empty">
+                    <p>No research queries yet.</p>
+                    <p class="hint">Use Perplexity research mode to get started!</p>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = `
+            <div class="stats-row">
+                <div class="stat">
+                    <span class="stat-label">Total Queries</span>
+                    <span class="stat-value">${response.total_queries}</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Total Cost</span>
+                    <span class="stat-value">$${response.total_cost.toFixed(3)}</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Period</span>
+                    <span class="stat-value">${response.period_days} days</span>
+                </div>
+            </div>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Query</th>
+                        <th>Time</th>
+                        <th>Cost</th>
+                        <th>Citations</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${response.queries.map(q => `
+                        <tr>
+                            <td>${q.query}</td>
+                            <td>${formatTime(q.timestamp)}</td>
+                            <td>$${q.cost.toFixed(3)}</td>
+                            <td>${q.citations.length}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+    } catch (error) {
+        console.error('Failed to load research:', error);
+        document.getElementById('researchContent').innerHTML = `
+            <div class="empty">
+                <p>Failed to load research history.</p>
+                <p class="hint">Check console for details.</p>
+            </div>
+        `;
+    }
+}
+
+// ============================================================
+// Skills Tab (Phase 4)
+// ============================================================
+
+async function loadSkills() {
+    try {
+        const response = await api('/skills?days=30');
+        const container = document.getElementById('skillsContent');
+
+        if (!response.success) {
+            container.innerHTML = `
+                <div class="empty">
+                    <p>Insufficient data for skill analysis.</p>
+                    <p class="hint">Keep using WHAM to build skill history!</p>
+                </div>
+            `;
+            return;
+        }
+
+        const metrics = response.metrics;
+        let html = '';
+
+        // Render skill cards
+        if (metrics.poker) {
+            html += renderSkillCard('🎰 Poker', metrics.poker);
+        }
+        if (metrics.homework) {
+            html += renderSkillCard('📚 Homework', metrics.homework);
+        }
+        if (metrics.focus) {
+            html += renderSkillCard('⏱️ Focus', metrics.focus);
+        }
+
+        // Overall consistency card
+        html += `
+            <div class="skill-card">
+                <h3>📊 Consistency</h3>
+                <div class="skill-level">${Math.round(metrics.overall_consistency * 100)}%</div>
+                <p class="hint">Activity regularity over ${response.days_analyzed} days</p>
+            </div>
+        `;
+
+        container.innerHTML = html;
+    } catch (error) {
+        console.error('Failed to load skills:', error);
+        document.getElementById('skillsContent').innerHTML = `
+            <div class="empty">
+                <p>Failed to load skill metrics.</p>
+                <p class="hint">Check console for details.</p>
+            </div>
+        `;
+    }
+}
+
+function renderSkillCard(title, skill) {
+    const trendEmoji = {
+        'improving': '📈',
+        'stable': '➡️',
+        'declining': '📉'
+    }[skill.trend];
+
+    const levelColor = {
+        'beginner': '#fbbf24',
+        'intermediate': '#60a5fa',
+        'advanced': '#34d399'
+    }[skill.skill_level];
+
+    return `
+        <div class="skill-card">
+            <h3>${title}</h3>
+            <div class="skill-level" style="color: ${levelColor}">
+                ${skill.skill_level.toUpperCase()}
+            </div>
+            <div class="skill-trend">${trendEmoji} ${skill.trend}</div>
+            <div class="skill-bar">
+                <div class="skill-progress" style="width: ${skill.confidence * 100}%"></div>
+            </div>
+            <p class="hint">${Math.round(skill.confidence * 100)}% confidence</p>
+        </div>
+    `;
+}
+
+// ============================================================
+// Academic Tab (Phase 4B)
+// ============================================================
+
+async function buildConceptBridge() {
+    const concept = document.getElementById('conceptInput').value.trim();
+    const connectToInput = document.getElementById('connectToInput').value.trim();
+    const resultDiv = document.getElementById('conceptBridgeResult');
+
+    if (!concept || !connectToInput) {
+        resultDiv.innerHTML = '<p class="empty">Please enter both a concept and topics to connect to.</p>';
+        return;
+    }
+
+    const connectTo = connectToInput.split(',').map(s => s.trim()).filter(s => s);
+    if (connectTo.length === 0) {
+        resultDiv.innerHTML = '<p class="empty">Please enter at least one topic to connect to.</p>';
+        return;
+    }
+
+    resultDiv.innerHTML = '<p class="hint">Building concept bridge... 🌉</p>';
+
+    try {
+        const result = await api('/academic/concept-bridge', {
+            method: 'POST',
+            body: JSON.stringify({ concept, connect_to: connectTo, level: 'undergraduate' })
+        });
+
+        let html = `
+            <div class="academic-result">
+                <h4>${result.concept}</h4>
+                <p><strong>Importance:</strong> ${result.importance}</p>
+        `;
+
+        result.relationships.forEach(rel => {
+            html += `
+                <div class="connection-card">
+                    <h5>→ ${rel.target}</h5>
+                    <p><strong>Relationship:</strong> ${rel.relationship}</p>
+                    <p><strong>Example:</strong> ${rel.example}</p>
+                </div>
+            `;
+        });
+
+        html += `
+                <p class="hint" style="margin-top: 12px;">
+                    Cost: $${result.cost.toFixed(3)} |
+                    Sources: ${result.sources.length}
+                </p>
+            </div>
+        `;
+
+        resultDiv.innerHTML = html;
+    } catch (error) {
+        console.error('Failed to build concept bridge:', error);
+        resultDiv.innerHTML = '<p class="empty">Failed to build concept bridge. Check console for details.</p>';
+    }
+}
+
+async function explainDerivation() {
+    const equation = document.getElementById('equationInput').value.trim();
+    const context = document.getElementById('contextInput').value.trim();
+    const resultDiv = document.getElementById('derivationResult');
+
+    if (!equation) {
+        resultDiv.innerHTML = '<p class="empty">Please enter an equation to derive.</p>';
+        return;
+    }
+
+    resultDiv.innerHTML = '<p class="hint">Deriving steps... 📐</p>';
+
+    try {
+        const result = await api('/academic/derivation', {
+            method: 'POST',
+            body: JSON.stringify({ equation, context, show_all_steps: true })
+        });
+
+        let html = `
+            <div class="academic-result">
+                <h4>${result.equation}</h4>
+                ${result.context ? `<p class="hint">${result.context}</p>` : ''}
+                <div class="derivation-steps">
+        `;
+
+        result.steps.forEach((step, idx) => {
+            html += `
+                <div class="step-card">
+                    <div class="step-number">Step ${idx + 1}</div>
+                    <div class="step-content">
+                        <p><strong>Expression:</strong> ${step.expression}</p>
+                        <p><strong>Explanation:</strong> ${step.explanation}</p>
+                        ${step.justification ? `<p class="hint">${step.justification}</p>` : ''}
+                    </div>
+                </div>
+            `;
+        });
+
+        html += `
+                </div>
+                ${result.final_result ? `<p style="margin-top: 12px;"><strong>Final Result:</strong> ${result.final_result}</p>` : ''}
+                <p class="hint" style="margin-top: 12px;">
+                    Cost: $${result.cost.toFixed(3)} |
+                    Sources: ${result.sources.length}
+                </p>
+            </div>
+        `;
+
+        resultDiv.innerHTML = html;
+    } catch (error) {
+        console.error('Failed to explain derivation:', error);
+        resultDiv.innerHTML = '<p class="empty">Failed to explain derivation. Check console for details.</p>';
+    }
+}
+
+async function generateStrategy() {
+    const problemType = document.getElementById('problemTypeInput').value.trim();
+    const resultDiv = document.getElementById('strategyResult');
+
+    if (!problemType) {
+        resultDiv.innerHTML = '<p class="empty">Please enter a problem type.</p>';
+        return;
+    }
+
+    resultDiv.innerHTML = '<p class="hint">Generating strategy... 🎯</p>';
+
+    try {
+        const result = await api('/academic/problem-strategy', {
+            method: 'POST',
+            body: JSON.stringify({ problem_type: problemType, include_examples: true })
+        });
+
+        let html = `
+            <div class="academic-result">
+                <h4>${result.problem_type}</h4>
+                <div class="strategy-section">
+                    <h5>🎯 Approach Steps</h5>
+                    <ol>
+        `;
+
+        result.approach_steps.forEach(step => {
+            html += `<li>${step}</li>`;
+        });
+
+        html += `
+                    </ol>
+                </div>
+                <div class="strategy-section">
+                    <h5>💡 Key Insights</h5>
+                    <ul>
+        `;
+
+        result.key_insights.forEach(insight => {
+            html += `<li>${insight}</li>`;
+        });
+
+        html += `
+                    </ul>
+                </div>
+                <div class="strategy-section">
+                    <h5>⚠️ Common Pitfalls</h5>
+                    <ul>
+        `;
+
+        result.common_pitfalls.forEach(pitfall => {
+            html += `<li>${pitfall}</li>`;
+        });
+
+        html += `
+                    </ul>
+                </div>
+        `;
+
+        if (result.example_problem) {
+            html += `
+                <div class="strategy-section">
+                    <h5>📝 Example Problem</h5>
+                    <p>${result.example_problem}</p>
+                </div>
+            `;
+        }
+
+        html += `
+                <p class="hint" style="margin-top: 12px;">
+                    Cost: $${result.cost.toFixed(3)} |
+                    Sources: ${result.sources.length}
+                </p>
+            </div>
+        `;
+
+        resultDiv.innerHTML = html;
+    } catch (error) {
+        console.error('Failed to generate strategy:', error);
+        resultDiv.innerHTML = '<p class="empty">Failed to generate strategy. Check console for details.</p>';
+    }
+}
+
+async function analyzeExamPattern() {
+    const course = document.getElementById('courseInput').value.trim();
+    const examType = document.getElementById('examTypeSelect').value;
+    const resultDiv = document.getElementById('examPatternResult');
+
+    if (!course) {
+        resultDiv.innerHTML = '<p class="empty">Please enter a course name.</p>';
+        return;
+    }
+
+    resultDiv.innerHTML = '<p class="hint">Analyzing exam patterns... 📊</p>';
+
+    try {
+        const result = await api('/academic/exam-pattern', {
+            method: 'POST',
+            body: JSON.stringify({ course, exam_type: examType, past_exams_context: '' })
+        });
+
+        let html = `
+            <div class="academic-result">
+                <h4>${result.course} - ${result.exam_type}</h4>
+                <div class="pattern-section">
+                    <h5>🔥 High Frequency Topics</h5>
+                    <ul>
+        `;
+
+        result.high_frequency_topics.forEach(topic => {
+            html += `<li>${topic}</li>`;
+        });
+
+        html += `
+                    </ul>
+                </div>
+                <div class="pattern-section">
+                    <h5>📋 Common Question Types</h5>
+                    <ul>
+        `;
+
+        result.common_question_types.forEach(qtype => {
+            html += `<li>${qtype}</li>`;
+        });
+
+        html += `
+                    </ul>
+                </div>
+                <div class="pattern-section">
+                    <h5>💡 Study Recommendations</h5>
+                    <ul>
+        `;
+
+        result.study_recommendations.forEach(rec => {
+            html += `<li>${rec}</li>`;
+        });
+
+        html += `
+                    </ul>
+                </div>
+                <p class="hint" style="margin-top: 12px;">
+                    Confidence: ${Math.round(result.confidence * 100)}% |
+                    Cost: $${result.cost.toFixed(3)} |
+                    Sources: ${result.sources.length}
+                </p>
+            </div>
+        `;
+
+        resultDiv.innerHTML = html;
+    } catch (error) {
+        console.error('Failed to analyze exam pattern:', error);
+        resultDiv.innerHTML = '<p class="empty">Failed to analyze exam pattern. Check console for details.</p>';
+    }
+}
+
+async function decodeNotation() {
+    const notation = document.getElementById('notationInput').value.trim();
+    const subjectContext = document.getElementById('notationContextInput').value.trim();
+    const resultDiv = document.getElementById('notationResult');
+
+    if (!notation) {
+        resultDiv.innerHTML = '<p class="empty">Please enter a symbol or notation.</p>';
+        return;
+    }
+
+    resultDiv.innerHTML = '<p class="hint">Decoding notation... 🔤</p>';
+
+    try {
+        const result = await api('/academic/notation', {
+            method: 'POST',
+            body: JSON.stringify({ notation, subject_context: subjectContext })
+        });
+
+        let html = `
+            <div class="academic-result">
+                <h4>${result.notation}</h4>
+                <p><strong>Name:</strong> ${result.name}</p>
+                <p><strong>Meaning:</strong> ${result.meaning}</p>
+        `;
+
+        if (result.common_contexts && result.common_contexts.length > 0) {
+            html += `
+                <div class="notation-section">
+                    <h5>📚 Common Contexts</h5>
+                    <ul>
+            `;
+            result.common_contexts.forEach(ctx => {
+                html += `<li>${ctx}</li>`;
+            });
+            html += `
+                    </ul>
+                </div>
+            `;
+        }
+
+        if (result.example_usage) {
+            html += `
+                <div class="notation-section">
+                    <h5>💡 Example Usage</h5>
+                    <p>${result.example_usage}</p>
+                </div>
+            `;
+        }
+
+        html += `
+                <p class="hint" style="margin-top: 12px;">
+                    Cost: $${result.cost.toFixed(3)} |
+                    Sources: ${result.sources.length}
+                </p>
+            </div>
+        `;
+
+        resultDiv.innerHTML = html;
+    } catch (error) {
+        console.error('Failed to decode notation:', error);
+        resultDiv.innerHTML = '<p class="empty">Failed to decode notation. Check console for details.</p>';
+    }
+}
+
+// ============================================================
+// Phase 4C: Advanced Academic Features
+// ============================================================
+
+// Helper function for escaping HTML in LaTeX formulas
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+async function findVisualIntuition() {
+    const concept = document.getElementById('visualConcept').value.trim();
+    const subjectArea = document.getElementById('visualSubject').value.trim();
+    const resultDiv = document.getElementById('visualIntuitionResult');
+
+    if (!concept) {
+        resultDiv.innerHTML = '<p class="empty">Please enter a concept.</p>';
+        return;
+    }
+
+    resultDiv.innerHTML = '<p class="empty">🎨 Finding visual intuition...</p>';
+
+    try {
+        const result = await api('/api/academic/visual-intuition', {
+            method: 'POST',
+            body: JSON.stringify({
+                concept: concept,
+                subject_area: subjectArea
+            })
+        });
+
+        let html = `
+            <div class="academic-result">
+                <h4>🎨 Visual Intuition: ${result.concept}</h4>
+
+                <div class="notation-section">
+                    <h5>🔄 Analogies</h5>
+                    <ul>
+        `;
+
+        result.analogies.forEach(analogy => {
+            html += `<li>${analogy}</li>`;
+        });
+
+        html += `
+                    </ul>
+                </div>
+
+                <div class="notation-section">
+                    <h5>🧠 Mental Models</h5>
+                    <ul>
+        `;
+
+        result.mental_models.forEach(model => {
+            html += `<li>${model}</li>`;
+        });
+
+        html += `
+                    </ul>
+                </div>
+
+                <div class="notation-section">
+                    <h5>👁️ Visual Resources</h5>
+                    <ul>
+        `;
+
+        result.visual_resources.forEach(resource => {
+            const typeEmoji = resource.type === 'video' ? '🎥' : '📊';
+            html += `<li>${typeEmoji} <strong>${resource.type}:</strong> ${resource.description}</li>`;
+        });
+
+        html += `
+                    </ul>
+                </div>
+
+                <div class="notation-section">
+                    <h5>📚 Learning Approach</h5>
+                    <p>${result.learning_approach}</p>
+                </div>
+
+                <p class="hint" style="margin-top: 12px;">
+                    Cost: $${result.cost.toFixed(3)} |
+                    Sources: ${result.sources.length}
+                </p>
+            </div>
+        `;
+
+        resultDiv.innerHTML = html;
+    } catch (error) {
+        console.error('Failed to find visual intuition:', error);
+        resultDiv.innerHTML = '<p class="empty">Failed to find visual intuition. Check console for details.</p>';
+    }
+}
+
+async function generateFormulaSheet() {
+    const topic = document.getElementById('formulaTopic').value.trim();
+    const resultDiv = document.getElementById('formulaSheetResult');
+
+    if (!topic) {
+        resultDiv.innerHTML = '<p class="empty">Please enter a topic.</p>';
+        return;
+    }
+
+    resultDiv.innerHTML = '<p class="empty">📐 Generating formula sheet...</p>';
+
+    try {
+        const result = await api('/api/academic/formula-sheet', {
+            method: 'POST',
+            body: JSON.stringify({
+                topic: topic
+            })
+        });
+
+        let html = `
+            <div class="academic-result">
+                <h4>📐 Formula Sheet: ${result.topic}</h4>
+        `;
+
+        result.categories.forEach(category => {
+            html += `
+                <div class="notation-section">
+                    <h5>📋 ${category.name}</h5>
+                    <ul>
+            `;
+
+            category.formulas.forEach(formula => {
+                html += `<li><code>${escapeHtml(formula)}</code></li>`;
+            });
+
+            html += `
+                    </ul>
+                </div>
+            `;
+        });
+
+        html += `
+                <div class="notation-section">
+                    <h5>🔗 Key Relationships</h5>
+                    <ul>
+        `;
+
+        result.key_relationships.forEach(relationship => {
+            html += `<li>${relationship}</li>`;
+        });
+
+        html += `
+                    </ul>
+                </div>
+
+                <div class="notation-section">
+                    <h5>⚠️ Common Mistakes</h5>
+                    <ul>
+        `;
+
+        result.common_mistakes.forEach(mistake => {
+            html += `<li>${mistake}</li>`;
+        });
+
+        html += `
+                    </ul>
+                </div>
+
+                <p class="hint" style="margin-top: 12px;">
+                    Cost: $${result.cost.toFixed(3)} |
+                    Sources: ${result.sources.length}
+                </p>
+            </div>
+        `;
+
+        resultDiv.innerHTML = html;
+    } catch (error) {
+        console.error('Failed to generate formula sheet:', error);
+        resultDiv.innerHTML = '<p class="empty">Failed to generate formula sheet. Check console for details.</p>';
+    }
+}
+
+async function prereadPaper() {
+    const title = document.getElementById('paperTitle').value.trim();
+    const authors = document.getElementById('paperAuthors').value.trim();
+    const year = document.getElementById('paperYear').value.trim();
+    const resultDiv = document.getElementById('paperSummaryResult');
+
+    if (!title) {
+        resultDiv.innerHTML = '<p class="empty">Please enter a paper title.</p>';
+        return;
+    }
+
+    resultDiv.innerHTML = '<p class="empty">📄 Analyzing paper...</p>';
+
+    try {
+        const result = await api('/api/academic/paper-summary', {
+            method: 'POST',
+            body: JSON.stringify({
+                title: title,
+                authors: authors,
+                year: year
+            })
+        });
+
+        const relevancePercent = (result.relevance_score * 100).toFixed(0);
+        const relevanceColor = result.relevance_score >= 0.7 ? '#4ade80' : result.relevance_score >= 0.4 ? '#fbbf24' : '#f87171';
+
+        let html = `
+            <div class="academic-result">
+                <h4>📄 ${result.title}</h4>
+                <p class="hint">${result.authors} (${result.year})</p>
+
+                <div class="notation-section">
+                    <h5>🎯 Main Contribution</h5>
+                    <p>${result.main_contribution}</p>
+                </div>
+
+                <div class="notation-section">
+                    <h5>🔍 Key Findings</h5>
+                    <ul>
+        `;
+
+        result.key_findings.forEach(finding => {
+            html += `<li>${finding}</li>`;
+        });
+
+        html += `
+                    </ul>
+                </div>
+
+                <div class="notation-section">
+                    <h5>🔬 Methodology</h5>
+                    <p>${result.methodology}</p>
+                </div>
+
+                <div class="notation-section">
+                    <h5>⚠️ Limitations</h5>
+                    <ul>
+        `;
+
+        result.limitations.forEach(limitation => {
+            html += `<li>${limitation}</li>`;
+        });
+
+        html += `
+                    </ul>
+                </div>
+
+                <div class="notation-section">
+                    <h5>📊 Relevance Score</h5>
+                    <div style="background: #2a2a2a; border-radius: 8px; overflow: hidden; margin-top: 8px;">
+                        <div style="background: ${relevanceColor}; width: ${relevancePercent}%; padding: 8px; text-align: center; color: #000; font-weight: bold; min-width: 60px;">
+                            ${relevancePercent}%
+                        </div>
+                    </div>
+                </div>
+
+                <p class="hint" style="margin-top: 12px;">
+                    Cost: $${result.cost.toFixed(3)} |
+                    Sources: ${result.sources.length}
+                </p>
+            </div>
+        `;
+
+        resultDiv.innerHTML = html;
+    } catch (error) {
+        console.error('Failed to analyze paper:', error);
+        resultDiv.innerHTML = '<p class="empty">Failed to analyze paper. Check console for details.</p>';
+    }
+}
+
+// ============================================================
+// Poker Lab (Phase 5)
+// ============================================================
+
+let currentSessionId = null;
+
+async function loadPokerSessions() {
+    try {
+        const data = await api('/poker/files');
+        const sessionList = document.getElementById('sessionList');
+
+        if (data.length === 0) {
+            sessionList.innerHTML = '<p class="empty">No poker sessions yet</p>';
+            return;
+        }
+
+        sessionList.innerHTML = data.map(session => {
+            const date = new Date(session.date * 1000);
+            const dateStr = date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+            const profitClass = session.profit_bb >= 0 ? 'positive' : 'negative';
+            const profitSign = session.profit_bb >= 0 ? '+' : '';
+            const reviewedClass = session.reviewed ? 'reviewed' : '';
+
+            return `
+                <div class="session-item ${reviewedClass}" onclick="selectSession('${session.session_id}')">
+                    <div class="session-date">${dateStr}</div>
+                    <div class="session-stats">
+                        <span>${session.hands} hands</span>
+                        <span class="session-profit ${profitClass}">${profitSign}${session.profit_bb.toFixed(1)} BB</span>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    } catch (error) {
+        console.error('Failed to load poker sessions:', error);
+        document.getElementById('sessionList').innerHTML = '<p class="empty">Failed to load sessions</p>';
+    }
+}
+
+async function selectSession(sessionId) {
+    currentSessionId = sessionId;
+
+    // Highlight selected session
+    document.querySelectorAll('.session-item').forEach(item => {
+        item.classList.remove('active');
+    });
+    event.target.closest('.session-item').classList.add('active');
+
+    // Clear previous results
+    document.getElementById('handReview').innerHTML = '<p class="hint">Analyzing session... 🎰</p>';
+
+    try {
+        const result = await api(`/poker/analyze/${sessionId}`, { method: 'POST' });
+        displayHandReview(result);
+    } catch (error) {
+        console.error('Failed to analyze session:', error);
+        document.getElementById('handReview').innerHTML = '<p class="empty">Failed to analyze session</p>';
+    }
+}
+
+function displayHandReview(result) {
+    const handReview = document.getElementById('handReview');
+
+    if (result.reviews.length === 0) {
+        handReview.innerHTML = '<p class="empty">No significant hands to analyze</p>';
+        return;
+    }
+
+    let html = `
+        <div style="margin-bottom: 16px; padding: 12px; background: var(--bg-card); border-radius: var(--radius-sm);">
+            <strong>${result.hands_analyzed} hands analyzed</strong> •
+            Cost: $${result.cost.toFixed(3)}
+        </div>
+    `;
+
+    result.reviews.forEach((review, idx) => {
+        const severityClass = review.mistake_severity.toLowerCase().replace(' ', '-');
+        const cards = review.hero_cards.join(' ');
+        const board = review.board.join(' ');
+
+        html += `
+            <div class="hand-card ${severityClass}">
+                <div class="hand-header">
+                    <span class="hand-number">Hand #${review.hand_number}</span>
+                    <span class="hand-score ${severityClass}">${review.gto_score}/100</span>
+                </div>
+                <div class="hand-situation">
+                    ${cards} • Board: ${board} • Pot: ${review.pot_bb.toFixed(1)} BB
+                </div>
+                <div class="hand-analysis">${review.coach_analysis}</div>
+                ${review.better_line ? `
+                    <div class="hand-better-line">
+                        <strong>Better Line:</strong>
+                        ${review.better_line}
+                    </div>
+                ` : ''}
+            </div>
+        `;
+    });
+
+    // Add summary if available
+    if (result.summary) {
+        html += `
+            <div style="margin-top: 16px; padding: 12px; background: var(--bg-card); border-radius: var(--radius-sm); border-left: 3px solid var(--accent);">
+                <strong>Session Summary:</strong><br>
+                ${result.summary.overall_grade || 'Analysis complete'}
+            </div>
+        `;
+    }
+
+    handReview.innerHTML = html;
+}
+
+async function profileOpponent() {
+    const playerName = document.getElementById('opponentName').value.trim();
+    const resultDiv = document.getElementById('opponentProfile');
+
+    if (!playerName) {
+        resultDiv.innerHTML = '<p class="empty">Enter a player name</p>';
+        return;
+    }
+
+    resultDiv.innerHTML = '<p class="hint">Profiling opponent... 👤</p>';
+
+    try {
+        const profile = await api(`/poker/profile/${encodeURIComponent(playerName)}`);
+
+        let html = `
+            <div class="opponent-profile">
+                <h5>${profile.player_name}</h5>
+                <div class="opponent-stats">
+                    <div class="opponent-stat">VPIP: <strong>${profile.vpip.toFixed(1)}%</strong></div>
+                    <div class="opponent-stat">PFR: <strong>${profile.pfr.toFixed(1)}%</strong></div>
+                    <div class="opponent-stat">Agg: <strong>${profile.aggression_freq.toFixed(1)}%</strong></div>
+                    <div class="opponent-stat">Hands: <strong>${profile.hands_seen}</strong></div>
+                </div>
+                <p style="margin-top: 8px;">
+                    <strong>Type:</strong> ${profile.play_style} (${profile.skill_level})<br>
+                    <strong>Weakness:</strong> ${profile.key_weakness}
+                </p>
+                <div class="opponent-exploits">
+                    <strong>Exploits:</strong>
+                    <ul>
+        `;
+
+        profile.exploits.forEach(exploit => {
+            html += `<li>${exploit}</li>`;
+        });
+
+        html += `
+                    </ul>
+                </div>
+                <p class="hint" style="margin-top: 8px;">
+                    Cost: $${profile.cost.toFixed(3)} •
+                    Confidence: ${(profile.confidence * 100).toFixed(0)}%
+                </p>
+            </div>
+        `;
+
+        resultDiv.innerHTML = html;
+    } catch (error) {
+        console.error('Failed to profile opponent:', error);
+        if (error.message.includes('404')) {
+            resultDiv.innerHTML = '<p class="empty">Player not found or insufficient hands (need 10+)</p>';
+        } else {
+            resultDiv.innerHTML = '<p class="empty">Failed to profile opponent</p>';
+        }
+    }
+}
+
+async function analyzeLeaks() {
+    const sessions = parseInt(document.getElementById('leakSessions').value);
+    const resultDiv = document.getElementById('leakReport');
+
+    resultDiv.innerHTML = '<p class="hint">Analyzing leaks... 🔍</p>';
+
+    try {
+        const report = await api(`/poker/leaks?last_n_sessions=${sessions}`);
+
+        let html = `
+            <div class="leak-report">
+                <h5>🔍 Leak Analysis</h5>
+                <p style="margin-bottom: 12px;">
+                    ${report.sessions_analyzed} sessions • ${report.total_hands} hands<br>
+                    <strong>Grade:</strong> ${report.overall_grade}
+                </p>
+        `;
+
+        if (report.leaks.length === 0) {
+            html += '<p class="empty">No significant leaks detected! 🎉</p>';
+        } else {
+            report.leaks.forEach(leak => {
+                const severityColor = leak.severity === 'High' ? 'var(--danger)' :
+                                     leak.severity === 'Medium' ? 'var(--warning)' : 'var(--text-secondary)';
+                html += `
+                    <div class="leak-item" style="border-left-color: ${severityColor};">
+                        <div class="leak-name">${leak.leak_name}</div>
+                        <div class="leak-frequency">${leak.frequency}x • ${leak.severity} severity</div>
+                        <div class="leak-fix">${leak.fix_drill}</div>
+                    </div>
+                `;
+            });
+
+            html += `
+                <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);">
+                    <strong>Focus Areas:</strong>
+                    <ul style="margin: 8px 0; padding-left: 20px;">
+            `;
+
+            report.study_priorities.forEach(priority => {
+                html += `<li>${priority}</li>`;
+            });
+
+            html += `
+                    </ul>
+                </div>
+            `;
+        }
+
+        html += `
+                <p class="hint" style="margin-top: 12px;">
+                    Cost: $${report.cost.toFixed(3)} •
+                    EV Loss: ${report.total_ev_loss.toFixed(1)} BB
+                </p>
+            </div>
+        `;
+
+        resultDiv.innerHTML = html;
+    } catch (error) {
+        console.error('Failed to analyze leaks:', error);
+        resultDiv.innerHTML = '<p class="empty">Failed to analyze leaks</p>';
     }
 }
 

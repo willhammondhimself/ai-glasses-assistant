@@ -25,6 +25,7 @@ from modes.poker_coach import LivePokerCoach
 from modes.homework_mode import HomeworkMode, HomeworkConfig
 from modes.code_debug_mode import CodeDebugMode, DebugConfig
 from edith.scanner import EdithScanner, ScanConfig
+from api_clients.gemini_client import GeminiClient
 from core.router import IntelligenceRouter
 from core.session_summary import SessionSummaryManager
 from core.power_manager import PowerManager, PowerMode
@@ -93,6 +94,9 @@ class WHAMClient:
         # EDITH and router
         self.edith: Optional[EdithScanner] = None
         self.router = IntelligenceRouter()
+
+        # Gemini Vision API
+        self.gemini = GeminiClient()
 
         # Do Not Disturb state
         self._do_not_disturb = False
@@ -388,6 +392,173 @@ class WHAMClient:
         time_str = datetime.now().strftime("%H:%M")
         lua = self.renderer.render_idle(message, time_str)
         await self._send_display(lua)
+
+    async def capture_current_view(self) -> Optional[bytes]:
+        """
+        Capture current view from glasses camera or desktop screen (fallback).
+
+        Priority:
+        1. Halo glasses camera (if connected)
+        2. Desktop screen capture (PIL fallback)
+
+        Returns:
+            JPEG image bytes (1280x720 max, quality 85) or None on failure
+        """
+        # Try glasses camera first
+        if self.halo and self.halo.connected:
+            logger.info("Capturing from Halo glasses camera")
+            return await self.halo.capture_image()
+
+        # Desktop fallback
+        try:
+            from PIL import ImageGrab, Image
+            import io
+
+            logger.info("Capturing from desktop screen")
+            screenshot = ImageGrab.grab()
+
+            # Resize to 1280px width (maintain aspect ratio)
+            if screenshot.width > 1280:
+                new_height = int(screenshot.height * (1280 / screenshot.width))
+                screenshot.thumbnail((1280, new_height), Image.LANCZOS)
+
+            # Encode as JPEG
+            buf = io.BytesIO()
+            screenshot.save(buf, format='JPEG', quality=85)
+            return buf.getvalue()
+
+        except Exception as e:
+            logger.error(f"Screen capture failed: {e}")
+            await self._speak("Screen capture unavailable")
+            return None
+
+    # ============================================================
+    # Vision Command Handlers
+    # ============================================================
+
+    async def vision_analyze_current_view(self):
+        """Handle 'What is this?' - General image analysis."""
+        await self._speak("Analyzing...")
+
+        image_data = await self.capture_current_view()
+        if not image_data:
+            return
+
+        try:
+            result = await self.gemini.analyze_image(
+                image_data,
+                prompt="Describe what you see in this image in detail. Identify key elements and their purpose."
+            )
+
+            await self._speak(result)
+            await self._send_display(self.renderer.render_text(f"EDITH Analysis\n\n{result}"))
+
+        except Exception as e:
+            logger.error(f"Vision analysis failed: {e}")
+            await self._speak("Vision analysis failed")
+
+    async def vision_solve_current_view(self):
+        """Handle 'Solve this' - Smart detection + mode routing."""
+        await self._speak("Let me look at that...")
+
+        image_data = await self.capture_current_view()
+        if not image_data:
+            return
+
+        try:
+            # Use Gemini to classify content type
+            classification = await self.gemini.analyze_image(
+                image_data,
+                prompt="Classify this image as ONE of: POKER_TABLE, CODE_EDITOR, MATH_PROBLEM, TEXT_DOCUMENT, OTHER"
+            )
+
+            classification = classification.strip().upper()
+
+            # Route to appropriate mode
+            if "POKER" in classification:
+                await self._speak("I see a poker table. Activating poker coach.")
+                await self.start_poker_coach()
+
+            elif "CODE" in classification:
+                await self._speak("I see code. Activating debug mode.")
+                # Extract code and activate debug mode
+                code_result = await self.gemini.extract_code(image_data)
+                # TODO: Pass extracted code to debug mode
+                logger.info(f"Code detected: {code_result.language}")
+
+            elif "MATH" in classification:
+                await self._speak("I see math. Let me solve it.")
+                math_result = await self.gemini.extract_math(image_data)
+                if math_result.equation:
+                    await self._speak(f"The equation is {math_result.equation}")
+                    # TODO: Solve using mental math engine
+
+            else:
+                # Fallback to general analysis
+                result = await self.gemini.analyze_image(
+                    image_data,
+                    prompt="What is this? Provide helpful context and next steps."
+                )
+                await self._speak(result)
+
+        except Exception as e:
+            logger.error(f"Vision solve failed: {e}")
+            await self._speak("Could not analyze the image")
+
+    async def vision_read_current_view(self):
+        """Handle 'Read this' - OCR extraction."""
+        await self._speak("Reading text...")
+
+        image_data = await self.capture_current_view()
+        if not image_data:
+            return
+
+        try:
+            result = await self.gemini.analyze_image(
+                image_data,
+                prompt="Extract all visible text from this image. Preserve formatting and structure."
+            )
+
+            await self._speak("Text extracted")
+            await self._send_display(self.renderer.render_text(f"OCR Result\n\n{result}"))
+
+        except Exception as e:
+            logger.error(f"OCR failed: {e}")
+            await self._speak("Could not read text")
+
+    async def _on_edith_detection(self, detection):
+        """
+        Handle EDITH scanner detections for auto-mode switching.
+
+        Called by EdithScanner when content is detected in background.
+        """
+        from edith.scanner import DetectionType
+
+        # Ignore low-confidence detections
+        if detection.confidence < 0.7:
+            return
+
+        logger.info(f"EDITH detected: {detection.type.value} (confidence: {detection.confidence})")
+
+        # Auto-switch based on detection type
+        if detection.type == DetectionType.POKER_TABLE:
+            if self.mode_name != "poker":
+                await self._speak("Poker table detected")
+                await self.start_poker_coach()
+
+        elif detection.type == DetectionType.CODE_EDITOR:
+            if self.mode_name != "debug":
+                await self._speak("Code detected")
+                # await self.start_code_debug_mode()  # TODO: Consider if auto-activation is desired
+
+        elif detection.type == DetectionType.MATH_PROBLEM:
+            if self.mode_name != "homework":
+                await self._speak("Math problem detected")
+                await self.start_homework_mode()
+
+    # ============================================================
+    # Mode Management
+    # ============================================================
 
     async def start_mental_math(self, difficulty: int = 2):
         """Start mental math mode."""
@@ -1009,6 +1180,23 @@ class WHAMClient:
             await self._speak(f"Power status: {status}")
             return
 
+        # === VISION COMMANDS ===
+
+        # "What is this?" - General image analysis
+        if any(phrase in text for phrase in ["what is this", "what's this", "identify this"]):
+            await self.vision_analyze_current_view()
+            return
+
+        # "Solve this" - Smart detection + mode routing
+        if any(phrase in text for phrase in ["solve this", "help with this", "debug this"]):
+            await self.vision_solve_current_view()
+            return
+
+        # "Read this" - OCR extraction
+        if any(phrase in text for phrase in ["read this", "ocr this", "what does this say"]):
+            await self.vision_read_current_view()
+            return
+
         # === EXISTING COMMANDS ===
 
         # Mental math activation
@@ -1133,7 +1321,22 @@ class WHAMClient:
 
         # Start EDITH if enabled
         if self.config["edith"]["enabled"]:
-            pass  # EDITH runs in background
+            from edith.scanner import ScanConfig
+
+            scan_config = ScanConfig(
+                enabled=True,
+                scan_interval_seconds=self.config["edith"].get("scan_interval_seconds", 5.0),
+                detection_types=["POKER_TABLE", "CODE_EDITOR", "MATH_PROBLEM"]
+            )
+
+            self.edith = EdithScanner(
+                config=scan_config,
+                capture_image=self.capture_current_view,
+                on_detection=self._on_edith_detection
+            )
+
+            await self.edith.start()
+            logger.info("EDITH scanner started with vision detection")
 
         logger.info("WHAM client running.")
 

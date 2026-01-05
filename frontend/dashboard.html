@@ -12,6 +12,10 @@
         <div class="header-left">
             <h1 class="logo">WHAM</h1>
             <span class="mode-indicator" id="modeIndicator">Idle</span>
+            <div class="live-indicator" id="liveIndicator">
+                <span class="live-dot"></span>
+                <span id="connectionStatus">Connecting...</span>
+            </div>
         </div>
         <div class="header-center">
             <div class="stat-pill">
@@ -22,6 +26,13 @@
                 <span class="stat-icon">💰</span>
                 <span id="todayCost">$0.00</span>
                 <span class="cost-budget">/ $5.00</span>
+            </div>
+            <div class="stat-pill edith-pill">
+                <span class="stat-icon">👁️</span>
+                <div class="edith-status">
+                    <span id="edithStatus" class="edith-label">EDITH</span>
+                    <span id="edithMode" class="edith-mode">Idle</span>
+                </div>
             </div>
         </div>
         <div class="header-right">
@@ -40,6 +51,11 @@
             <button class="tab" data-tab="captures">Captures</button>
             <button class="tab" data-tab="memory">Memory</button>
             <button class="tab" data-tab="opponents">Opponents</button>
+            <button class="tab" data-tab="suggestions">Suggestions</button>
+            <button class="tab" data-tab="research">Research</button>
+            <button class="tab" data-tab="skills">Skills</button>
+            <button class="tab" data-tab="academic">Academic</button>
+            <button class="tab" data-tab="poker-lab">Poker Lab</button>
         </nav>
 
         <!-- Tab: Today -->
@@ -268,6 +284,196 @@
                 </table>
             </div>
         </section>
+
+        <!-- Tab: Suggestions -->
+        <section class="tab-content" id="tab-suggestions">
+            <div class="card">
+                <h2 class="card-title">Proactive Suggestions</h2>
+                <p class="hint">WHAM learns your patterns and suggests actions at the right time.</p>
+                <div id="suggestionsContent">
+                    <div class="loading">Loading suggestions...</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tab: Research (Phase 4) -->
+        <section class="tab-content" id="tab-research">
+            <div class="card">
+                <h2 class="card-title">Research History</h2>
+                <p class="hint">Track your Perplexity research queries and fact-checks.</p>
+                <div id="researchContent">
+                    <div class="loading">Loading research...</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tab: Skills (Phase 4) -->
+        <section class="tab-content" id="tab-skills">
+            <div class="card">
+                <h2 class="card-title">Skill Progression</h2>
+                <p class="hint">Track your skill levels and improvement trends across activities.</p>
+                <div id="skillsContent" class="skill-cards">
+                    <div class="loading">Loading skills...</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tab: Academic (Phase 4B) -->
+        <section class="tab-content" id="tab-academic">
+            <div class="card">
+                <h2 class="card-title">Academic Tools</h2>
+                <p class="hint">Advanced research tools powered by Perplexity for studying and homework.</p>
+
+                <div class="academic-tools">
+                    <!-- Concept Bridge Tool -->
+                    <div class="tool-card">
+                        <h3>🌉 Concept Bridge Builder</h3>
+                        <p>Connect ideas across courses and subjects</p>
+                        <div class="tool-form">
+                            <input type="text" id="conceptInput" placeholder="Main concept (e.g., 'Hermitian operators')">
+                            <input type="text" id="connectToInput" placeholder="Connect to (comma-separated)">
+                            <button onclick="buildConceptBridge()">Build Bridge</button>
+                        </div>
+                        <div id="conceptBridgeResult" class="tool-result"></div>
+                    </div>
+
+                    <!-- Derivation Explainer Tool -->
+                    <div class="tool-card">
+                        <h3>📐 Derivation Explainer</h3>
+                        <p>Step-by-step mathematical proofs</p>
+                        <div class="tool-form">
+                            <input type="text" id="equationInput" placeholder="Equation to derive">
+                            <input type="text" id="contextInput" placeholder="Context (optional)">
+                            <button onclick="explainDerivation()">Explain Steps</button>
+                        </div>
+                        <div id="derivationResult" class="tool-result"></div>
+                    </div>
+
+                    <!-- Problem Strategy Tool -->
+                    <div class="tool-card">
+                        <h3>🎯 Problem Strategy Generator</h3>
+                        <p>Learn attack patterns for problem types</p>
+                        <div class="tool-form">
+                            <input type="text" id="problemTypeInput" placeholder="Problem type (e.g., 'integration by parts')">
+                            <button onclick="generateStrategy()">Generate Strategy</button>
+                        </div>
+                        <div id="strategyResult" class="tool-result"></div>
+                    </div>
+
+                    <!-- Exam Pattern Analyzer Tool -->
+                    <div class="tool-card">
+                        <h3>📊 Exam Pattern Analyzer</h3>
+                        <p>Identify common exam patterns</p>
+                        <div class="tool-form">
+                            <input type="text" id="courseInput" placeholder="Course name">
+                            <select id="examTypeSelect">
+                                <option value="final">Final</option>
+                                <option value="midterm">Midterm</option>
+                                <option value="quiz">Quiz</option>
+                            </select>
+                            <button onclick="analyzeExamPattern()">Analyze Pattern</button>
+                        </div>
+                        <div id="examPatternResult" class="tool-result"></div>
+                    </div>
+
+                    <!-- Notation Decoder Tool -->
+                    <div class="tool-card">
+                        <h3>🔤 Notation Decoder</h3>
+                        <p>Explain unfamiliar math symbols</p>
+                        <div class="tool-form">
+                            <input type="text" id="notationInput" placeholder="Symbol or notation">
+                            <input type="text" id="notationContextInput" placeholder="Subject context (optional)">
+                            <button onclick="decodeNotation()">Decode Symbol</button>
+                        </div>
+                        <div id="notationResult" class="tool-result"></div>
+                    </div>
+
+                    <!-- Visual Intuition Finder Tool (Phase 4C) -->
+                    <div class="tool-card">
+                        <h3>🎨 Visual Intuition Finder</h3>
+                        <p>Find analogies, mental models, and visual resources</p>
+                        <div class="tool-form">
+                            <input type="text" id="visualConcept" placeholder="Concept (e.g., Fourier Transform)">
+                            <input type="text" id="visualSubject" placeholder="Subject area (optional)">
+                            <button onclick="findVisualIntuition()">Find Intuition</button>
+                        </div>
+                        <div id="visualIntuitionResult" class="tool-result"></div>
+                    </div>
+
+                    <!-- Formula Sheet Generator Tool (Phase 4C) -->
+                    <div class="tool-card">
+                        <h3>📐 Formula Sheet Generator</h3>
+                        <p>Create organized formula sheets with LaTeX</p>
+                        <div class="tool-form">
+                            <input type="text" id="formulaTopic" placeholder="Topic (e.g., Calculus - Integration)">
+                            <button onclick="generateFormulaSheet()">Generate Sheet</button>
+                        </div>
+                        <div id="formulaSheetResult" class="tool-result"></div>
+                    </div>
+
+                    <!-- Paper Pre-reader Tool (Phase 4C) -->
+                    <div class="tool-card">
+                        <h3>📄 Paper Pre-reader</h3>
+                        <p>Get executive summaries of academic papers</p>
+                        <div class="tool-form">
+                            <input type="text" id="paperTitle" placeholder="Paper title">
+                            <input type="text" id="paperAuthors" placeholder="Authors (optional)">
+                            <input type="text" id="paperYear" placeholder="Year (optional)">
+                            <button onclick="prereadPaper()">Analyze Paper</button>
+                        </div>
+                        <div id="paperSummaryResult" class="tool-result"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tab: Poker Lab (Phase 5) -->
+        <section class="tab-content" id="tab-poker-lab">
+            <div class="card">
+                <h2 class="card-title">♠️ Poker Lab - Post-Session Analysis</h2>
+                <p class="hint">Deep analysis powered by DeepSeek V3. Review hands, profile opponents, and find leaks.</p>
+
+                <div class="poker-lab-grid">
+                    <!-- Left: Session List -->
+                    <div class="session-list-panel">
+                        <h3>Sessions</h3>
+                        <div id="sessionList" class="session-list">
+                            <div class="loading">Loading sessions...</div>
+                        </div>
+                    </div>
+
+                    <!-- Center: Hand Review -->
+                    <div class="hand-review-panel">
+                        <h3>Hand Review</h3>
+                        <div id="handReview" class="hand-review">
+                            <p class="empty">Select a session to analyze</p>
+                        </div>
+                    </div>
+
+                    <!-- Right: Tools -->
+                    <div class="tools-panel">
+                        <!-- Opponent Search -->
+                        <div class="tool-card">
+                            <h4>👤 Opponent Profiler</h4>
+                            <p class="tool-hint">Requires 10+ hands against player</p>
+                            <input type="text" id="opponentName" placeholder="Player name">
+                            <button onclick="profileOpponent()">Profile</button>
+                            <div id="opponentProfile"></div>
+                        </div>
+
+                        <!-- Leak Analysis -->
+                        <div class="tool-card">
+                            <h4>🔍 Leak Detector</h4>
+                            <p class="tool-hint">Analyze patterns across sessions</p>
+                            <input type="number" id="leakSessions" value="10" min="1" max="50">
+                            <label for="leakSessions">sessions</label>
+                            <button onclick="analyzeLeaks()">Find Leaks</button>
+                            <div id="leakReport"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
     </main>
 
     <!-- Quick Capture Modal -->
@@ -321,6 +527,8 @@
         </div>
     </footer>
 
+    <!-- Chart.js for analytics visualizations -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="/static/dashboard.js"></script>
 </body>
 </html>

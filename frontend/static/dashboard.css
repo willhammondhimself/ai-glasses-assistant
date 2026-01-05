@@ -742,6 +742,880 @@ body {
 }
 
 /* ============================================================
+   Live Indicator
+   ============================================================ */
+.live-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    margin-left: 12px;
+    padding: 4px 10px;
+    background: var(--bg-card);
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+}
+
+.live-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #ef4444;
+    animation: pulse 2s infinite;
+}
+
+.live-dot.connected {
+    background: #22c55e;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+#connectionStatus {
+    color: var(--text-dim);
+}
+
+/* ============================================================
+   Toast Notifications
+   ============================================================ */
+.toast-notification {
+    position: fixed;
+    bottom: 80px;
+    right: 20px;
+    background: var(--accent);
+    color: white;
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    animation: slideIn 0.3s ease, fadeOut 0.3s ease 2.7s;
+    z-index: 1000;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+@keyframes fadeOut {
+    from { opacity: 1; }
+    to { opacity: 0; }
+}
+
+/* Timeline item animation for new items */
+.timeline-item.new {
+    animation: highlightNew 0.5s ease;
+    background: rgba(99, 102, 241, 0.1);
+}
+
+@keyframes highlightNew {
+    from {
+        background: rgba(99, 102, 241, 0.3);
+        transform: translateX(-10px);
+    }
+    to {
+        background: rgba(99, 102, 241, 0.1);
+        transform: translateX(0);
+    }
+}
+
+/* ============================================================
+   Suggestion Cards
+   ============================================================ */
+.suggestion-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 16px;
+    margin-bottom: 12px;
+    transition: all var(--transition);
+}
+
+.suggestion-card:hover {
+    border-color: var(--accent);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow);
+}
+
+.suggestion-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.suggestion-icon {
+    font-size: 20px;
+}
+
+.suggestion-title {
+    font-weight: 600;
+    flex: 1;
+    color: var(--text-primary);
+}
+
+.suggestion-confidence {
+    font-size: 12px;
+    color: var(--text-dim);
+    background: rgba(99, 102, 241, 0.1);
+    padding: 2px 8px;
+    border-radius: 12px;
+}
+
+.suggestion-message {
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+    line-height: 1.5;
+}
+
+.suggestion-action {
+    background: var(--accent);
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: 14px;
+    transition: all var(--transition);
+}
+
+.suggestion-action:hover {
+    background: var(--accent-dim);
+    transform: translateY(-1px);
+}
+
+.suggestion-action:active {
+    transform: translateY(0);
+}
+
+/* ============================================================
+   Phase 4: Research & Skills Styles
+   ============================================================ */
+
+/* Skill Cards Grid */
+.skill-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 16px;
+}
+
+/* Individual Skill Card */
+.skill-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 20px;
+    text-align: center;
+}
+
+.skill-card h3 {
+    font-size: 18px;
+    font-weight: 600;
+    margin: 0 0 12px 0;
+    color: var(--text-primary);
+}
+
+/* Skill Level Display */
+.skill-level {
+    font-size: 24px;
+    font-weight: 600;
+    margin: 8px 0;
+}
+
+/* Skill Trend */
+.skill-trend {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+}
+
+/* Skill Progress Bar */
+.skill-bar {
+    height: 8px;
+    background: var(--bg-secondary);
+    border-radius: 4px;
+    overflow: hidden;
+    margin: 12px 0;
+}
+
+.skill-progress {
+    height: 100%;
+    background: var(--accent);
+    transition: width 0.3s ease;
+}
+
+/* Research Table Styles */
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 16px;
+}
+
+.data-table th {
+    text-align: left;
+    padding: 12px;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.data-table td {
+    padding: 12px;
+    border-bottom: 1px solid var(--border);
+}
+
+.data-table tr:hover {
+    background: var(--bg-secondary);
+}
+
+/* Stats Row for Research Summary */
+.stats-row {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+
+.stats-row .stat {
+    flex: 1;
+    min-width: 120px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.stats-row .stat-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+}
+
+.stats-row .stat-value {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+/* ============================================================
+   Phase 4B: Academic Tools Styles
+   ============================================================ */
+
+/* Academic Tools Grid */
+.academic-tools {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+    gap: 20px;
+    margin-top: 20px;
+}
+
+/* Individual Tool Card */
+.tool-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 20px;
+    transition: all var(--transition);
+}
+
+.tool-card:hover {
+    border-color: var(--accent);
+    box-shadow: var(--shadow);
+}
+
+.tool-card h3 {
+    font-size: 18px;
+    font-weight: 600;
+    margin: 0 0 8px 0;
+    color: var(--text-primary);
+}
+
+.tool-card > p {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 16px;
+}
+
+/* Tool Form */
+.tool-form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.tool-form input,
+.tool-form select {
+    padding: 10px 14px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: 14px;
+    transition: border-color var(--transition);
+}
+
+.tool-form input:focus,
+.tool-form select:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.tool-form button {
+    padding: 10px 16px;
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all var(--transition);
+}
+
+.tool-form button:hover {
+    background: var(--accent-dim);
+    transform: translateY(-1px);
+}
+
+.tool-form button:active {
+    transform: translateY(0);
+}
+
+/* Tool Result Area */
+.tool-result {
+    min-height: 60px;
+    max-height: 500px;
+    overflow-y: auto;
+    padding: 12px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-size: 14px;
+}
+
+.tool-result .empty {
+    padding: 20px;
+}
+
+/* Academic Result Container */
+.academic-result {
+    color: var(--text-secondary);
+    line-height: 1.6;
+}
+
+.academic-result h4 {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--accent);
+    margin-bottom: 12px;
+}
+
+.academic-result h5 {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 12px 0 8px 0;
+}
+
+.academic-result p {
+    margin-bottom: 8px;
+}
+
+.academic-result strong {
+    color: var(--text-primary);
+}
+
+.academic-result ul,
+.academic-result ol {
+    margin: 8px 0 12px 20px;
+    color: var(--text-secondary);
+}
+
+.academic-result li {
+    margin-bottom: 6px;
+    line-height: 1.5;
+}
+
+/* Concept Bridge Connections */
+.connection-card {
+    background: var(--bg-secondary);
+    border-left: 3px solid var(--accent);
+    padding: 12px 16px;
+    margin: 12px 0;
+    border-radius: var(--radius-sm);
+}
+
+.connection-card h5 {
+    color: var(--accent);
+    margin-top: 0;
+}
+
+/* Derivation Steps */
+.derivation-steps {
+    margin: 16px 0;
+}
+
+.step-card {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 12px;
+    padding: 12px;
+    background: var(--bg-secondary);
+    border-radius: var(--radius-sm);
+    border-left: 3px solid var(--accent);
+}
+
+.step-number {
+    flex-shrink: 0;
+    width: 60px;
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-card);
+    border-radius: 50%;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--accent);
+    border: 2px solid var(--accent);
+}
+
+.step-content {
+    flex: 1;
+}
+
+.step-content p {
+    margin-bottom: 6px;
+}
+
+/* Strategy Sections */
+.strategy-section {
+    margin: 16px 0;
+    padding: 12px;
+    background: var(--bg-secondary);
+    border-radius: var(--radius-sm);
+}
+
+.strategy-section h5 {
+    margin-top: 0;
+}
+
+/* Pattern Sections */
+.pattern-section {
+    margin: 16px 0;
+    padding: 12px;
+    background: var(--bg-secondary);
+    border-radius: var(--radius-sm);
+}
+
+.pattern-section h5 {
+    margin-top: 0;
+}
+
+/* Notation Sections */
+.notation-section {
+    margin: 16px 0;
+    padding: 12px;
+    background: var(--bg-secondary);
+    border-radius: var(--radius-sm);
+}
+
+.notation-section h5 {
+    margin-top: 0;
+}
+
+/* Academic Tools Responsive */
+@media (max-width: 1024px) {
+    .academic-tools {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ============================================================
+   Phase 5: Poker Lab Styles
+   ============================================================ */
+
+/* Poker Lab 3-Column Grid */
+.poker-lab-grid {
+    display: grid;
+    grid-template-columns: 250px 1fr 300px;
+    gap: 20px;
+    margin-top: 20px;
+}
+
+/* Session List Panel */
+.session-list-panel {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 16px;
+    overflow: hidden;
+}
+
+.session-list-panel h3 {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    color: var(--text-primary);
+}
+
+.session-list {
+    max-height: 600px;
+    overflow-y: auto;
+}
+
+/* Individual Session Item */
+.session-item {
+    padding: 12px;
+    margin-bottom: 8px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all var(--transition);
+}
+
+.session-item:hover {
+    background: var(--bg-hover);
+    border-color: var(--accent);
+    transform: translateX(4px);
+}
+
+.session-item.active {
+    background: rgba(99, 102, 241, 0.1);
+    border-color: var(--accent);
+}
+
+.session-item.reviewed {
+    border-left: 3px solid var(--success);
+}
+
+.session-date {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+}
+
+.session-stats {
+    font-size: 12px;
+    color: var(--text-secondary);
+    display: flex;
+    justify-content: space-between;
+}
+
+.session-profit {
+    font-weight: 600;
+}
+
+.session-profit.positive {
+    color: var(--success);
+}
+
+.session-profit.negative {
+    color: var(--danger);
+}
+
+/* Hand Review Panel */
+.hand-review-panel {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 16px;
+}
+
+.hand-review-panel h3 {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    color: var(--text-primary);
+}
+
+.hand-review {
+    max-height: 600px;
+    overflow-y: auto;
+}
+
+/* Hand Card */
+.hand-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 16px;
+    margin-bottom: 12px;
+    transition: all var(--transition);
+}
+
+.hand-card:hover {
+    box-shadow: var(--shadow);
+}
+
+/* Severity Colors */
+.hand-card.blunder {
+    border-left-color: var(--danger);
+}
+
+.hand-card.inaccuracy {
+    border-left-color: var(--warning);
+}
+
+.hand-card.optimal {
+    border-left-color: var(--success);
+}
+
+.hand-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.hand-number {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.hand-score {
+    font-size: 18px;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: var(--radius-sm);
+    background: var(--bg-secondary);
+}
+
+.hand-score.blunder {
+    color: var(--danger);
+}
+
+.hand-score.inaccuracy {
+    color: var(--warning);
+}
+
+.hand-score.optimal {
+    color: var(--success);
+}
+
+.hand-situation {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+}
+
+.hand-analysis {
+    font-size: 14px;
+    color: var(--text-primary);
+    line-height: 1.6;
+    margin-bottom: 12px;
+}
+
+.hand-better-line {
+    padding: 12px;
+    background: var(--bg-secondary);
+    border-radius: var(--radius-sm);
+    border-left: 3px solid var(--accent);
+    margin-top: 12px;
+}
+
+.hand-better-line strong {
+    color: var(--accent);
+    display: block;
+    margin-bottom: 6px;
+    font-size: 13px;
+}
+
+/* Tools Panel */
+.tools-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.tools-panel .tool-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 16px;
+}
+
+.tools-panel .tool-card h4 {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: var(--text-primary);
+}
+
+.tool-hint {
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-bottom: 12px;
+}
+
+.tools-panel input[type="text"],
+.tools-panel input[type="number"] {
+    width: 100%;
+    padding: 8px 12px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: 14px;
+    margin-bottom: 8px;
+}
+
+.tools-panel input:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.tools-panel label {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-left: 8px;
+}
+
+.tools-panel button {
+    width: 100%;
+    padding: 10px 16px;
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all var(--transition);
+    margin-bottom: 12px;
+}
+
+.tools-panel button:hover {
+    background: var(--accent-dim);
+    transform: translateY(-1px);
+}
+
+/* Opponent Profile Result */
+.opponent-profile {
+    padding: 12px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+}
+
+.opponent-profile h5 {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--accent);
+    margin-bottom: 8px;
+}
+
+.opponent-stats {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    margin: 12px 0;
+}
+
+.opponent-stat {
+    font-size: 12px;
+}
+
+.opponent-stat strong {
+    color: var(--text-primary);
+}
+
+.opponent-exploits {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+}
+
+.opponent-exploits ul {
+    margin: 8px 0;
+    padding-left: 20px;
+}
+
+.opponent-exploits li {
+    margin-bottom: 4px;
+}
+
+/* Leak Report Result */
+.leak-report {
+    padding: 12px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+}
+
+.leak-report h5 {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--danger);
+    margin-bottom: 8px;
+}
+
+.leak-item {
+    padding: 10px;
+    background: var(--bg-secondary);
+    border-left: 3px solid var(--danger);
+    border-radius: var(--radius-sm);
+    margin-bottom: 8px;
+}
+
+.leak-name {
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+}
+
+.leak-frequency {
+    font-size: 12px;
+    color: var(--text-dim);
+}
+
+.leak-fix {
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid var(--border);
+    font-size: 12px;
+    font-style: italic;
+}
+
+/* Poker Lab Responsive */
+@media (max-width: 1200px) {
+    .poker-lab-grid {
+        grid-template-columns: 200px 1fr 250px;
+    }
+}
+
+@media (max-width: 1024px) {
+    .poker-lab-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .session-list,
+    .hand-review {
+        max-height: 400px;
+    }
+}
+
+/* ============================================================
    Responsive
    ============================================================ */
 @media (max-width: 1024px) {
@@ -787,4 +1661,44 @@ body {
     .form-row {
         flex-direction: column;
     }
+}
+
+/* ============================================================ */
+/* EDITH Vision Status                                          */
+/* ============================================================ */
+
+.edith-pill {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 12px 16px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.edith-status {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.edith-label {
+    font-size: 14px;
+    font-weight: 600;
+    opacity: 0.9;
+}
+
+.edith-mode {
+    font-size: 12px;
+    opacity: 0.7;
+}
+
+.edith-pill.active {
+    animation: edith-pulse 2s ease-in-out infinite;
+}
+
+@keyframes edith-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.8; box-shadow: 0 0 20px rgba(102, 126, 234, 0.5); }
 }

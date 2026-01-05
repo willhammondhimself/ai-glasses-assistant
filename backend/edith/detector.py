@@ -7,12 +7,28 @@ Each detector handles classification and extraction for its domain.
 
 import logging
 import re
+import sys
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple
 from enum import Enum
 
 from .scanner import ScanResult, DetectionType
+
+# Import GeminiClient from phone_client
+PHONE_CLIENT_PATH = Path(__file__).parent.parent.parent / "phone_client"
+sys.path.insert(0, str(PHONE_CLIENT_PATH))
+
+from api_clients.gemini_client import GeminiClient, MathExtraction, CodeExtraction, CardExtraction
+
+# Import vision models
+from backend.dashboard.models import (
+    MathDetectionResult,
+    CodeDetectionResult,
+    PokerDetectionResult,
+    TextDetectionResult,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +86,14 @@ class EquationDetector(ContentDetector):
         r'\([^)]+\)\s*[\+\-\*\/]',              # Parenthesized expressions
     ]
 
+    def __init__(self, client: Optional[GeminiClient] = None):
+        self.client = client or GeminiClient()
+
+    @property
+    def is_available(self) -> bool:
+        """Check if Gemini vision is available."""
+        return self.client.is_available
+
     @property
     def detection_type(self) -> DetectionType:
         return DetectionType.EQUATION
@@ -79,16 +103,30 @@ class EquationDetector(ContentDetector):
         image_data: bytes,
         quick_mode: bool = False,
     ) -> Optional[ScanResult]:
-        """Detect equations in image."""
-        if quick_mode:
-            # Quick heuristic: look for high contrast regions
-            # with mathematical symbol-like shapes
-            # (Would use edge detection in production)
+        """Detect math equation in image using Gemini."""
+        # Call through to Gemini
+        extraction = await self.client.extract_math(image_data)
+
+        # Convert to MathDetectionResult
+        result = MathDetectionResult(
+            equation=extraction.equation.strip(),
+            problem_type=extraction.problem_type,
+            variables=list(set(extraction.variables)),  # Unique variables
+            confidence=max(0.0, min(1.0, extraction.confidence)),  # Clamp
+            raw_response=extraction.raw_response
+        )
+
+        # Return None if no equation found
+        if not result.equation:
             return None
 
-        # Full detection would use OCR + math recognition
-        # For now, return placeholder
-        return None
+        # Wrap in ScanResult for compatibility
+        return ScanResult(
+            detected=True,
+            confidence=result.confidence,
+            bounding_box=None,
+            data=result.model_dump()
+        )
 
     def extract_content(self, raw_result: Dict[str, Any]) -> str:
         """Extract equation as string."""
@@ -169,6 +207,14 @@ class CodeDetector(ContentDetector):
         r'ReferenceError',
     ]
 
+    def __init__(self, client: Optional[GeminiClient] = None):
+        self.client = client or GeminiClient()
+
+    @property
+    def is_available(self) -> bool:
+        """Check if Gemini vision is available."""
+        return self.client.is_available
+
     @property
     def detection_type(self) -> DetectionType:
         return DetectionType.CODE
@@ -178,14 +224,27 @@ class CodeDetector(ContentDetector):
         image_data: bytes,
         quick_mode: bool = False,
     ) -> Optional[ScanResult]:
-        """Detect code in image."""
-        if quick_mode:
-            # Quick heuristic: look for monospace text patterns,
-            # syntax highlighting colors
+        """Detect code in image using Gemini."""
+        extraction = await self.client.extract_code(image_data)
+
+        result = CodeDetectionResult(
+            code=extraction.code,  # Preserve indentation
+            language=extraction.language.lower(),
+            error_visible=extraction.error_visible,
+            confidence=max(0.0, min(1.0, extraction.confidence)),
+            raw_response=extraction.raw_response
+        )
+
+        # Return None if no code or confidence 0
+        if not result.code or result.confidence == 0.0:
             return None
 
-        # Full detection would use OCR optimized for code
-        return None
+        return ScanResult(
+            detected=True,
+            confidence=result.confidence,
+            bounding_box=None,
+            data=result.model_dump()
+        )
 
     def extract_content(self, raw_result: Dict[str, Any]) -> str:
         """Extract code as string."""
@@ -226,6 +285,14 @@ class PokerDetector(ContentDetector):
     RANKS = ['A', 'K', 'Q', 'J', '10', '9', '8', '7', '6', '5', '4', '3', '2']
     SUITS = ['♠', '♥', '♦', '♣', 's', 'h', 'd', 'c']
 
+    def __init__(self, client: Optional[GeminiClient] = None):
+        self.client = client or GeminiClient()
+
+    @property
+    def is_available(self) -> bool:
+        """Check if Gemini vision is available."""
+        return self.client.is_available
+
     @property
     def detection_type(self) -> DetectionType:
         return DetectionType.POKER_CARDS
@@ -235,18 +302,36 @@ class PokerDetector(ContentDetector):
         image_data: bytes,
         quick_mode: bool = False,
     ) -> Optional[ScanResult]:
-        """Detect poker cards in image."""
-        if quick_mode:
-            # Quick heuristic: look for card-shaped rectangles
-            # with red/black color regions
-            return None
+        """Detect poker cards and game state using Gemini."""
+        extraction = await self.client.extract_cards(image_data)
 
-        # Full detection would use card recognition model
-        return None
+        # Ensure exactly 2 hole cards
+        hole_cards = extraction.hole_cards[:2]  # Truncate if > 2
+        while len(hole_cards) < 2:
+            hole_cards.append("?")  # Pad if < 2
+
+        # Ensure board max 5 cards
+        board = extraction.board[:5]
+
+        result = PokerDetectionResult(
+            hole_cards=hole_cards,
+            board=board,
+            pot_size_bb=max(0.0, extraction.pot_size),  # No negatives
+            bet_facing_bb=max(0.0, extraction.bet_facing),
+            confidence=max(0.0, min(1.0, extraction.confidence)),
+            raw_response=extraction.raw_response
+        )
+
+        return ScanResult(
+            detected=True,
+            confidence=result.confidence,
+            bounding_box=None,
+            data=result.model_dump()
+        )
 
     def extract_content(self, raw_result: Dict[str, Any]) -> str:
         """Extract cards as string representation."""
-        cards = raw_result.get("cards", [])
+        cards = raw_result.get("hole_cards", []) + raw_result.get("board", [])
         return " ".join(cards)
 
     def parse_hand(self, hand_str: str) -> List[Tuple[str, str]]:
@@ -294,6 +379,14 @@ class TextDetector(ContentDetector):
     - Document pages
     """
 
+    def __init__(self, client: Optional[GeminiClient] = None):
+        self.client = client or GeminiClient()
+
+    @property
+    def is_available(self) -> bool:
+        """Check if Gemini vision is available."""
+        return self.client.is_available
+
     @property
     def detection_type(self) -> DetectionType:
         return DetectionType.TEXT
@@ -303,13 +396,30 @@ class TextDetector(ContentDetector):
         image_data: bytes,
         quick_mode: bool = False,
     ) -> Optional[ScanResult]:
-        """Detect text in image."""
-        if quick_mode:
-            # Quick heuristic: look for text-like edge patterns
+        """Extract text from image using Gemini OCR."""
+        # Use analyze_image with OCR-specific prompt
+        prompt = "Extract all visible text from this image. Return only the text, preserving formatting and structure. Do not summarize."
+
+        text = await self.client.analyze_image(image_data, prompt)
+
+        # Estimate confidence (Gemini doesn't provide OCR confidence directly)
+        confidence = 0.9 if text and len(text) > 10 else 0.5 if text else 0.0
+
+        result = TextDetectionResult(
+            text=text,
+            confidence=confidence,
+            raw_response=text
+        )
+
+        if not result.text:
             return None
 
-        # Full detection would use OCR
-        return None
+        return ScanResult(
+            detected=True,
+            confidence=result.confidence,
+            bounding_box=None,
+            data=result.model_dump()
+        )
 
     def extract_content(self, raw_result: Dict[str, Any]) -> str:
         """Extract text content."""

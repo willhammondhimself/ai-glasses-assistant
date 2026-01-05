@@ -20,6 +20,7 @@ class SessionStats:
     duration_seconds: float = 0
     cost: float = 0
     details: Dict[str, Any] = field(default_factory=dict)
+    research_queries: List[Dict] = field(default_factory=list)  # Phase 4: Research tracking
 
 
 @dataclass
@@ -30,6 +31,7 @@ class DailySummary:
     homework: SessionStats
     meetings: SessionStats
     code_debug: SessionStats
+    general: SessionStats  # Phase 4: For research queries and general tracking
     total_cost: float
     total_duration_seconds: float
     battery_time_seconds: float
@@ -63,6 +65,7 @@ class SessionSummaryManager:
         self.homework_stats = SessionStats()
         self.meeting_stats = SessionStats()
         self.debug_stats = SessionStats()
+        self.general_stats = SessionStats()  # Phase 4: For research queries
 
         # Session tracking
         self.session_start = datetime.now()
@@ -194,6 +197,34 @@ class SessionSummaryManager:
 
         logger.debug(f"Recorded debug: {language}")
 
+    def record_research(
+        self,
+        query: str,
+        cost: float,
+        citations: List,
+        context: Dict[str, Any]
+    ):
+        """
+        Record research query (Phase 4).
+
+        Args:
+            query: Research question
+            cost: Query cost
+            citations: List of citations/sources
+            context: Mode and skill level context
+        """
+        self.general_stats.research_queries.append({
+            'query': query,
+            'timestamp': datetime.now().isoformat(),
+            'cost': cost,
+            'citations': citations,
+            'context': context
+        })
+        self.general_stats.cost += cost
+        self.general_stats.count += 1
+
+        logger.debug(f"Recorded research query: {query[:50]}...")
+
     def generate_top_insight(self) -> str:
         """
         Generate most important insight from session.
@@ -245,7 +276,8 @@ class SessionSummaryManager:
             self.poker_stats.cost +
             self.homework_stats.cost +
             self.meeting_stats.cost +
-            self.debug_stats.cost
+            self.debug_stats.cost +
+            self.general_stats.cost
         )
 
         total_duration = (datetime.now() - self.session_start).total_seconds()
@@ -256,6 +288,7 @@ class SessionSummaryManager:
             homework=self.homework_stats,
             meetings=self.meeting_stats,
             code_debug=self.debug_stats,
+            general=self.general_stats,
             total_cost=total_cost,
             total_duration_seconds=total_duration,
             battery_time_seconds=total_duration,  # TODO: Track actual battery usage
@@ -343,6 +376,7 @@ class SessionSummaryManager:
             'homework': asdict(summary.homework),
             'meetings': asdict(summary.meetings),
             'code_debug': asdict(summary.code_debug),
+            'general': asdict(summary.general),
             'total_cost': summary.total_cost,
             'total_duration_seconds': summary.total_duration_seconds,
             'battery_time_seconds': summary.battery_time_seconds,
@@ -363,6 +397,7 @@ class SessionSummaryManager:
         self.homework_stats = SessionStats()
         self.meeting_stats = SessionStats()
         self.debug_stats = SessionStats()
+        self.general_stats = SessionStats()
         self.session_start = datetime.now()
         self.insights.clear()
         logger.info("Session stats reset")

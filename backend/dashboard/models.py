@@ -317,6 +317,51 @@ class HealthStatus(BaseModel):
 
 
 # ============================================================
+# Vision Detection Models (Backend EDITH)
+# ============================================================
+
+class MathDetectionResult(BaseModel):
+    """Math equation detection result from vision."""
+    equation: str = Field(..., description="Canonical equation string")
+    problem_type: str = Field(..., description="Type: arithmetic, algebra, polynomial, derivative, integral, trigonometry, word_problem, proof, unknown")
+    variables: List[str] = Field(default_factory=list, description="Variables detected (e.g., ['x', 'y'])")
+    confidence: float = Field(..., ge=0.0, le=1.0, description="Detection confidence 0.0-1.0")
+    raw_response: Optional[str] = Field(None, description="Raw Gemini response for debugging")
+
+
+class CodeDetectionResult(BaseModel):
+    """Code extraction result from vision."""
+    code: str = Field(..., description="Extracted code with indentation preserved")
+    language: str = Field(..., description="Lowercase language: python, javascript, unknown")
+    error_visible: bool = Field(..., description="Whether error message visible in screenshot")
+    confidence: float = Field(..., ge=0.0, le=1.0)
+    raw_response: Optional[str] = None
+
+
+class PokerDetectionResult(BaseModel):
+    """Poker cards and game state detection from vision."""
+    hole_cards: List[str] = Field(..., min_length=2, max_length=2, description='Hero hole cards like ["Ah", "Kc"] or ["?", "?"]')
+    board: List[str] = Field(default_factory=list, max_length=5, description="Community cards 0-5")
+    pot_size_bb: float = Field(..., ge=0.0, description="Pot size in big blinds")
+    bet_facing_bb: float = Field(..., ge=0.0, description="Current bet to call in big blinds")
+    confidence: float = Field(..., ge=0.0, le=1.0)
+    raw_response: Optional[str] = None
+
+
+class TextDetectionResult(BaseModel):
+    """OCR text extraction result from vision."""
+    text: str = Field(..., description="Extracted text content")
+    confidence: float = Field(..., ge=0.0, le=1.0)
+    raw_response: Optional[str] = None
+
+
+class VisionError(BaseModel):
+    """Vision detection error response."""
+    error: str = Field(..., description="Error message")
+    detail: Optional[str] = Field(None, description="Detailed error information")
+
+
+# ============================================================
 # Generic Response Models
 # ============================================================
 

@@ -29,6 +29,11 @@ class DetectionType(Enum):
     QR_CODE = "qr_code"
     POKER_CARDS = "poker_cards"
 
+    # Screen-based detection (using Gemini vision)
+    POKER_TABLE = "poker_table"      # Full poker table UI
+    CODE_EDITOR = "code_editor"      # IDE/editor interface
+    MATH_PROBLEM = "math_problem"    # Math equations/problems
+
 
 @dataclass
 class Detection:
@@ -169,13 +174,69 @@ class EdithScanner:
         """
         Analyze image for detections.
 
-        This is a lightweight analysis - more intensive processing
-        would happen on-demand after user confirms interest.
+        Uses Gemini for screen-based classification (poker tables, code editors, math problems),
+        falls back to OpenCV detectors for traditional vision tasks.
         """
         detections = []
 
+        if not image_data:
+            return detections
+
+        # Try Gemini classification for screen-based detection first
+        try:
+            from ..api_clients.gemini_client import GeminiClient
+            gemini = GeminiClient()
+
+            if gemini.is_available:
+                classification = await gemini.analyze_image(
+                    image_data,
+                    prompt="Classify this image. Return ONLY one of: POKER_TABLE, CODE_EDITOR, MATH_PROBLEM, POKER_CARDS, TEXT, OTHER"
+                )
+
+                classification = classification.strip().upper()
+
+                # Map classification to DetectionType
+                if "POKER_TABLE" in classification:
+                    detections.append(Detection(
+                        type=DetectionType.POKER_TABLE,
+                        confidence=0.9,
+                        bounding_box=(0, 0, 1280, 720),
+                        content="Poker table detected via Gemini"
+                    ))
+
+                elif "CODE_EDITOR" in classification or "CODE" in classification:
+                    detections.append(Detection(
+                        type=DetectionType.CODE_EDITOR,
+                        confidence=0.9,
+                        bounding_box=(0, 0, 1280, 720),
+                        content="Code editor detected via Gemini"
+                    ))
+
+                elif "MATH" in classification:
+                    detections.append(Detection(
+                        type=DetectionType.MATH_PROBLEM,
+                        confidence=0.9,
+                        bounding_box=(0, 0, 1280, 720),
+                        content="Math problem detected via Gemini"
+                    ))
+
+                elif "POKER_CARDS" in classification:
+                    detections.append(Detection(
+                        type=DetectionType.POKER_CARDS,
+                        confidence=0.9,
+                        bounding_box=(0, 0, 1280, 720),
+                        content="Poker cards detected via Gemini"
+                    ))
+
+                # If Gemini found something, return early
+                if detections:
+                    return detections
+
+        except Exception as e:
+            logger.debug(f"Gemini classification failed, falling back to OpenCV: {e}")
+
+        # Fallback to OpenCV detectors
         if not CV2_AVAILABLE:
-            # Placeholder without OpenCV
             return detections
 
         try:
@@ -208,7 +269,7 @@ class EdithScanner:
                 detections.extend(qr_detections)
 
         except Exception as e:
-            logger.error(f"Image analysis error: {e}")
+            logger.error(f"OpenCV analysis error: {e}")
 
         return detections
 
@@ -357,6 +418,10 @@ class EdithScanner:
             DetectionType.FACE: 0.8,
             DetectionType.QR_CODE: 0.9,
             DetectionType.POKER_CARDS: 0.8,
+            # Screen-based detection (Gemini)
+            DetectionType.POKER_TABLE: 0.7,
+            DetectionType.CODE_EDITOR: 0.7,
+            DetectionType.MATH_PROBLEM: 0.7,
         }
 
         if detection.confidence < min_confidence.get(detection.type, 0.7):
