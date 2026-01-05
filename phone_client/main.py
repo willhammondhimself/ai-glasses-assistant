@@ -24,7 +24,7 @@ from modes.mental_math import MentalMathMode, DrillConfig
 from modes.poker_coach import LivePokerCoach
 from modes.homework_mode import HomeworkMode, HomeworkConfig
 from modes.code_debug_mode import CodeDebugMode, DebugConfig
-from edith.scanner import EdithScanner, ScanConfig
+from vision.scanner import VisionScanner, ScanConfig
 from api_clients.gemini_client import GeminiClient
 from core.router import IntelligenceRouter
 from core.session_summary import SessionSummaryManager
@@ -58,7 +58,7 @@ class WHAMClient:
     - Bluetooth connection to Halo glasses
     - Voice recognition
     - Mode management (Mental Math, Poker, etc.)
-    - EDITH background scanning
+    - WHAM Vision background scanning
     """
 
     def __init__(self, config_path: str = "config.yaml"):
@@ -91,8 +91,8 @@ class WHAMClient:
         self.notifications = NotificationManager(self.config)
         self.notifications.set_display_callback(self._display_notification)
 
-        # EDITH and router
-        self.edith: Optional[EdithScanner] = None
+        # Vision scanner and router
+        self.vision_scanner: Optional[VisionScanner] = None
         self.router = IntelligenceRouter()
 
         # Gemini Vision API
@@ -214,12 +214,12 @@ class WHAMClient:
                 category="battery"
             )
 
-        # Adjust EDITH behavior based on power
-        if self.edith:
+        # Adjust Vision scanner behavior based on power
+        if self.vision_scanner:
             if new_mode == PowerMode.CRITICAL:
-                self.edith.set_battery_saver(True)
+                self.vision_scanner.set_battery_saver(True)
             elif old_mode == PowerMode.CRITICAL:
-                self.edith.set_battery_saver(False)
+                self.vision_scanner.set_battery_saver(False)
 
     async def _display_notification(self, notification: Notification):
         """Display a notification on the HUD."""
@@ -291,12 +291,12 @@ class WHAMClient:
         """Update battery status from glasses."""
         mode_changed = self.power_manager.update_battery(percent, charging)
 
-        # Update EDITH interval if needed
-        if self.edith and mode_changed:
+        # Update Vision scanner interval if needed
+        if self.vision_scanner and mode_changed:
             if self.power_manager.is_low_power():
-                self.edith.set_battery_saver(True)
+                self.vision_scanner.set_battery_saver(True)
             else:
-                self.edith.set_battery_saver(False)
+                self.vision_scanner.set_battery_saver(False)
 
     def set_do_not_disturb(self, enabled: bool):
         """Toggle do not disturb mode."""
@@ -451,7 +451,7 @@ class WHAMClient:
             )
 
             await self._speak(result)
-            await self._send_display(self.renderer.render_text(f"EDITH Analysis\n\n{result}"))
+            await self._send_display(self.renderer.render_text(f"WHAM Vision Analysis\n\n{result}"))
 
         except Exception as e:
             logger.error(f"Vision analysis failed: {e}")
@@ -526,19 +526,19 @@ class WHAMClient:
             logger.error(f"OCR failed: {e}")
             await self._speak("Could not read text")
 
-    async def _on_edith_detection(self, detection):
+    async def _on_vision_detection(self, detection):
         """
-        Handle EDITH scanner detections for auto-mode switching.
+        Handle Vision scanner detections for auto-mode switching.
 
-        Called by EdithScanner when content is detected in background.
+        Called by VisionScanner when content is detected in background.
         """
-        from edith.scanner import DetectionType
+        from vision.scanner import DetectionType
 
         # Ignore low-confidence detections
         if detection.confidence < 0.7:
             return
 
-        logger.info(f"EDITH detected: {detection.type.value} (confidence: {detection.confidence})")
+        logger.info(f"Vision scanner detected: {detection.type.value} (confidence: {detection.confidence})")
 
         # Auto-switch based on detection type
         if detection.type == DetectionType.POKER_TABLE:
@@ -1119,17 +1119,17 @@ class WHAMClient:
             await self._speak("Full power mode. All models enabled.")
             return
 
-        # EDITH pause/resume
+        # Vision scanner pause/resume
         if any(w in text for w in ["pause", "stop scanning", "standby"]):
-            if self.edith:
-                await self.edith.pause()
-                await self._speak("EDITH paused. Say resume to continue.")
+            if self.vision_scanner:
+                await self.vision_scanner.pause()
+                await self._speak("Vision scanner paused. Say resume to continue.")
             return
 
         if any(w in text for w in ["resume", "start scanning", "wake up"]):
-            if self.edith:
-                await self.edith.resume()
-                await self._speak("EDITH scanning resumed.")
+            if self.vision_scanner:
+                await self.vision_scanner.resume()
+                await self._speak("Vision scanner resumed.")
             return
 
         # === DISPLAY & POWER COMMANDS ===
@@ -1319,24 +1319,25 @@ class WHAMClient:
         # Start input processor
         input_task = asyncio.create_task(self._input_processor())
 
-        # Start EDITH if enabled
-        if self.config["edith"]["enabled"]:
-            from edith.scanner import ScanConfig
+        # Start Vision scanner if enabled
+        if self.config.get("vision", self.config.get("edith", {})).get("enabled", True):
+            from vision.scanner import ScanConfig
 
+            vision_config = self.config.get("vision", self.config.get("edith", {}))
             scan_config = ScanConfig(
                 enabled=True,
-                scan_interval_seconds=self.config["edith"].get("scan_interval_seconds", 5.0),
+                scan_interval_seconds=vision_config.get("scan_interval_seconds", 5.0),
                 detection_types=["POKER_TABLE", "CODE_EDITOR", "MATH_PROBLEM"]
             )
 
-            self.edith = EdithScanner(
+            self.vision_scanner = VisionScanner(
                 config=scan_config,
                 capture_image=self.capture_current_view,
-                on_detection=self._on_edith_detection
+                on_detection=self._on_vision_detection
             )
 
-            await self.edith.start()
-            logger.info("EDITH scanner started with vision detection")
+            await self.vision_scanner.start()
+            logger.info("Vision scanner started with detection")
 
         logger.info("WHAM client running.")
 

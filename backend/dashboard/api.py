@@ -65,6 +65,11 @@ from .models import (
     PokerDetectionResult,
     TextDetectionResult,
     VisionError,
+    # Homework models
+    HomeworkSolution,
+    HomeworkHistoryEntry,
+    HomeworkHistoryQuery,
+    HomeworkHistoryResponse,
     # Generic
     SuccessResponse,
     ErrorResponse,
@@ -135,7 +140,7 @@ def _get_math_detector():
     """Get singleton EquationDetector."""
     global _math_detector
     if _math_detector is None:
-        from backend.edith.detector import EquationDetector
+        from backend.vision.detector import EquationDetector
         _math_detector = EquationDetector()
     return _math_detector
 
@@ -144,7 +149,7 @@ def _get_code_detector():
     """Get singleton CodeDetector."""
     global _code_detector
     if _code_detector is None:
-        from backend.edith.detector import CodeDetector
+        from backend.vision.detector import CodeDetector
         _code_detector = CodeDetector()
     return _code_detector
 
@@ -153,7 +158,7 @@ def _get_poker_detector():
     """Get singleton PokerDetector."""
     global _poker_detector
     if _poker_detector is None:
-        from backend.edith.detector import PokerDetector
+        from backend.vision.detector import PokerDetector
         _poker_detector = PokerDetector()
     return _poker_detector
 
@@ -162,7 +167,7 @@ def _get_text_detector():
     """Get singleton TextDetector."""
     global _text_detector
     if _text_detector is None:
-        from backend.edith.detector import TextDetector
+        from backend.vision.detector import TextDetector
         _text_detector = TextDetector()
     return _text_detector
 
@@ -1336,7 +1341,7 @@ async def dashboard_page():
 
 
 # =============================================================================
-# VISION DETECTION ROUTES (Backend EDITH)
+# VISION DETECTION ROUTES (WHAM Vision)
 # =============================================================================
 
 import logging
@@ -1378,7 +1383,7 @@ async def detect_math(file: UploadFile = File(...)):
                 confidence=0.0
             )
 
-        return MathDetectionResult(**scan_result.data)
+        return MathDetectionResult(**scan_result.metadata)
 
     except Exception as e:
         logger.error(f"Math detection failed: {e}")
@@ -1416,7 +1421,7 @@ async def detect_code(file: UploadFile = File(...)):
                 confidence=0.0
             )
 
-        return CodeDetectionResult(**scan_result.data)
+        return CodeDetectionResult(**scan_result.metadata)
 
     except Exception as e:
         logger.error(f"Code detection failed: {e}")
@@ -1455,7 +1460,7 @@ async def detect_poker(file: UploadFile = File(...)):
                 confidence=0.0
             )
 
-        return PokerDetectionResult(**scan_result.data)
+        return PokerDetectionResult(**scan_result.metadata)
 
     except Exception as e:
         logger.error(f"Poker detection failed: {e}")
@@ -1491,7 +1496,7 @@ async def detect_text(file: UploadFile = File(...)):
                 confidence=0.0
             )
 
-        return TextDetectionResult(**scan_result.data)
+        return TextDetectionResult(**scan_result.metadata)
 
     except Exception as e:
         logger.error(f"Text detection failed: {e}")
@@ -1506,6 +1511,257 @@ async def vision_health():
         "gemini_available": detector.is_available,
         "detectors": ["math", "code", "poker", "text"]
     }
+
+
+# =============================================================================
+# HOMEWORK VISION COPILOT (Phase 7)
+# =============================================================================
+
+# Import homework history module
+from backend.homework import history as homework_history
+
+
+async def _solve_with_academic_tools(
+    equation: str,
+    problem_type: str
+) -> dict:
+    """
+    Route to appropriate academic tool based on problem type.
+
+    Args:
+        equation: The math equation to solve
+        problem_type: Type from vision detection (algebra, calculus, etc.)
+
+    Returns:
+        dict with solution_steps, concept_explanation, tool_used
+    """
+    from intelligence.academic_assistant import AcademicAssistant
+
+    assistant = AcademicAssistant()
+
+    # Route based on problem type
+    if problem_type in ["calculus_derivative", "calculus_integral", "limit"]:
+        # Use derivation explainer for calculus
+        result = await assistant.explain_derivation(equation, context=problem_type)
+        return {
+            "solution_steps": result.steps,
+            "concept_explanation": result.physical_meaning or result.common_mistakes or "",
+            "tool_used": "derivation_explainer"
+        }
+
+    elif problem_type in ["series", "polynomial", "algebra"]:
+        # Use problem strategy for algebraic problems
+        result = await assistant.generate_problem_strategy(f"{problem_type}: {equation}")
+        return {
+            "solution_steps": [step.action for step in result.steps],
+            "concept_explanation": result.prerequisites[0] if result.prerequisites else "",
+            "tool_used": "problem_strategy"
+        }
+
+    elif problem_type in ["trigonometry", "logarithm"]:
+        # Use concept bridge for trig/log
+        result = await assistant.build_concept_bridge(
+            equation,
+            connect_to=["algebra", "calculus"],
+            level="undergraduate"
+        )
+        return {
+            "solution_steps": [f"{c.shared_concept}: {c.explanation}" for c in result.connections],
+            "concept_explanation": result.source_context,
+            "tool_used": "concept_bridge"
+        }
+
+    else:
+        # Default: use derivation explainer
+        result = await assistant.explain_derivation(equation, context="general mathematics")
+        return {
+            "solution_steps": result.steps,
+            "concept_explanation": result.physical_meaning or "",
+            "tool_used": "derivation_explainer"
+        }
+
+
+@router.post("/api/homework/solve", response_model=HomeworkSolution)
+async def solve_homework(file: UploadFile = File(...)):
+    """
+    Complete homework vision copilot pipeline.
+
+    1. Extracts math equation from image (Gemini Vision)
+    2. Routes to appropriate Academic Intelligence tool
+    3. Returns structured solution with steps
+    4. Logs to homework history
+
+    Accepts: image/jpeg, image/png (max 10MB)
+    Returns: HomeworkSolution with problem, steps, explanation
+    """
+    start_time = time.time()
+
+    # Validate file type
+    if file.content_type not in ["image/jpeg", "image/png"]:
+        raise HTTPException(400, detail="Invalid file type. Use JPEG or PNG")
+
+    MAX_SIZE = 10 * 1024 * 1024
+    image_data = await file.read()
+    if len(image_data) > MAX_SIZE:
+        raise HTTPException(400, detail="File too large. Max 10MB")
+
+    # Step 1: Detect math equation
+    detector = _get_math_detector()
+    if not detector.is_available:
+        raise HTTPException(503, detail="Gemini vision not available")
+
+    try:
+        scan_result = await detector.detect(image_data)
+
+        if not scan_result or not scan_result.content:
+            return HomeworkSolution(
+                problem=MathDetectionResult(
+                    equation="",
+                    problem_type="unknown",
+                    variables=[],
+                    confidence=0.0
+                ),
+                solution_steps=[],
+                concept_explanation="No math equation detected in image.",
+                tool_used="none",
+                execution_time_ms=(time.time() - start_time) * 1000,
+                success=False,
+                error_message="No math equation detected"
+            )
+
+        # Build problem result
+        problem = MathDetectionResult(**scan_result.metadata)
+
+        # Step 2: Solve with academic tools
+        try:
+            solution = await _solve_with_academic_tools(
+                problem.equation,
+                problem.problem_type
+            )
+        except Exception as e:
+            logger.error(f"Academic tool error: {e}")
+            solution = {
+                "solution_steps": [f"Error: {str(e)}"],
+                "concept_explanation": "",
+                "tool_used": "error"
+            }
+
+        execution_time_ms = (time.time() - start_time) * 1000
+
+        # Build response
+        result = HomeworkSolution(
+            problem=problem,
+            solution_steps=solution["solution_steps"],
+            concept_explanation=solution["concept_explanation"],
+            tool_used=solution["tool_used"],
+            timestamp=time.time(),
+            execution_time_ms=execution_time_ms,
+            success=True
+        )
+
+        # Step 3: Log to homework history
+        try:
+            homework_history.append_entry({
+                "problem_latex": problem.equation,
+                "problem_type": problem.problem_type,
+                "solution_summary": solution["solution_steps"][0] if solution["solution_steps"] else "No solution",
+                "full_solution": result.model_dump()
+            })
+        except Exception as e:
+            logger.warning(f"Failed to log homework history: {e}")
+
+        # Broadcast update to dashboard
+        try:
+            await broadcast_dashboard_update("homework_solved", {
+                "equation": problem.equation[:50],
+                "type": problem.problem_type,
+                "tool": solution["tool_used"]
+            })
+        except Exception:
+            pass  # Non-critical
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Homework solve failed: {e}")
+        raise HTTPException(500, detail=f"Solution failed: {str(e)}")
+
+
+@router.get("/api/homework/history", response_model=HomeworkHistoryResponse)
+async def get_homework_history(
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    problem_type: Optional[str] = None,
+    starred_only: bool = False
+):
+    """
+    Query homework history with filters.
+
+    Args:
+        limit: Maximum entries to return (1-100)
+        offset: Pagination offset
+        problem_type: Filter by problem type
+        starred_only: Only return starred entries
+
+    Returns:
+        HomeworkHistoryResponse with entries and total count
+    """
+    try:
+        result = homework_history.query_history(
+            limit=limit,
+            offset=offset,
+            problem_type=problem_type,
+            starred_only=starred_only
+        )
+
+        return HomeworkHistoryResponse(
+            entries=[HomeworkHistoryEntry(**e) for e in result["entries"]],
+            total=result["total"]
+        )
+    except Exception as e:
+        logger.error(f"Homework history query failed: {e}")
+        raise HTTPException(500, detail=f"Query failed: {str(e)}")
+
+
+@router.get("/api/homework/history/{entry_id}")
+async def get_homework_entry(entry_id: str):
+    """Get a single homework history entry by ID."""
+    entry = homework_history.get_entry(entry_id)
+    if not entry:
+        raise HTTPException(404, detail="Entry not found")
+    return HomeworkHistoryEntry(**entry)
+
+
+@router.patch("/api/homework/history/{entry_id}")
+async def update_homework_entry(entry_id: str, updates: dict):
+    """
+    Update homework entry (star/unstar, add tags).
+
+    Request body:
+        {
+            "starred": bool (optional),
+            "tags": List[str] (optional)
+        }
+    """
+    if not homework_history.update_entry(entry_id, updates):
+        raise HTTPException(404, detail="Entry not found")
+    return {"success": True, "message": "Entry updated"}
+
+
+@router.delete("/api/homework/history/{entry_id}")
+async def delete_homework_entry(entry_id: str):
+    """Delete a homework history entry."""
+    if not homework_history.delete_entry(entry_id):
+        raise HTTPException(404, detail="Entry not found")
+    return {"success": True, "message": "Entry deleted"}
+
+
+@router.get("/api/homework/stats")
+async def get_homework_stats():
+    """Get homework history statistics."""
+    return homework_history.get_stats()
 
 
 # =============================================================================

@@ -1,6 +1,8 @@
 """
 WHAM Dashboard - Pydantic Models for API requests and responses.
 """
+import time
+import uuid
 from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
@@ -359,6 +361,51 @@ class VisionError(BaseModel):
     """Vision detection error response."""
     error: str = Field(..., description="Error message")
     detail: Optional[str] = Field(None, description="Detailed error information")
+
+
+# ============================================================
+# Homework Vision Copilot Models (Phase 7)
+# ============================================================
+
+class HomeworkSolution(BaseModel):
+    """Result from homework vision + academic tools pipeline."""
+    problem: MathDetectionResult
+    solution_steps: List[str] = Field(default_factory=list, description="Step-by-step solution")
+    concept_explanation: str = Field("", description="Conceptual context for the solution")
+    tool_used: str = Field("unknown", description="Which academic tool provided the solution")
+    timestamp: float = Field(default_factory=time.time, description="Unix timestamp")
+    execution_time_ms: float = Field(0.0, description="Time to solve in milliseconds")
+    success: bool = Field(True, description="Whether solution was successful")
+    error_message: Optional[str] = Field(None, description="Error message if failed")
+
+
+class HomeworkHistoryEntry(BaseModel):
+    """Single problem in homework history."""
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Unique entry ID")
+    timestamp: float = Field(default_factory=time.time, description="Unix timestamp")
+    problem_latex: str = Field(..., description="LaTeX equation string")
+    problem_type: str = Field(..., description="Type: algebra, calculus, etc.")
+    solution_summary: str = Field(..., description="Brief solution summary")
+    full_solution: Optional[HomeworkSolution] = Field(None, description="Complete solution details")
+    tags: List[str] = Field(default_factory=list, description="User-added tags")
+    starred: bool = Field(False, description="Starred for quick access")
+
+
+class HomeworkHistoryQuery(BaseModel):
+    """Query parameters for homework history."""
+    limit: int = Field(20, ge=1, le=100, description="Max entries to return")
+    offset: int = Field(0, ge=0, description="Pagination offset")
+    problem_type: Optional[str] = Field(None, description="Filter by problem type")
+    tags: Optional[List[str]] = Field(None, description="Filter by tags")
+    starred_only: bool = Field(False, description="Only return starred entries")
+    start_date: Optional[float] = Field(None, description="Filter by start timestamp")
+    end_date: Optional[float] = Field(None, description="Filter by end timestamp")
+
+
+class HomeworkHistoryResponse(BaseModel):
+    """Response for homework history query."""
+    entries: List[HomeworkHistoryEntry] = Field(default_factory=list)
+    total: int = Field(0, description="Total matching entries")
 
 
 # ============================================================

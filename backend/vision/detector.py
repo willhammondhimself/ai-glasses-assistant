@@ -122,10 +122,11 @@ class EquationDetector(ContentDetector):
 
         # Wrap in ScanResult for compatibility
         return ScanResult(
-            detected=True,
+            detection_type=DetectionType.EQUATION,
             confidence=result.confidence,
+            content=result.equation,
             bounding_box=None,
-            data=result.model_dump()
+            metadata=result.model_dump()
         )
 
     def extract_content(self, raw_result: Dict[str, Any]) -> str:
@@ -240,10 +241,11 @@ class CodeDetector(ContentDetector):
             return None
 
         return ScanResult(
-            detected=True,
+            detection_type=DetectionType.CODE,
             confidence=result.confidence,
+            content=result.code,
             bounding_box=None,
-            data=result.model_dump()
+            metadata=result.model_dump()
         )
 
     def extract_content(self, raw_result: Dict[str, Any]) -> str:
@@ -323,10 +325,11 @@ class PokerDetector(ContentDetector):
         )
 
         return ScanResult(
-            detected=True,
+            detection_type=DetectionType.POKER_CARDS,
             confidence=result.confidence,
+            content=" ".join(hole_cards + board),
             bounding_box=None,
-            data=result.model_dump()
+            metadata=result.model_dump()
         )
 
     def extract_content(self, raw_result: Dict[str, Any]) -> str:
@@ -415,10 +418,11 @@ class TextDetector(ContentDetector):
             return None
 
         return ScanResult(
-            detected=True,
+            detection_type=DetectionType.TEXT,
             confidence=result.confidence,
+            content=result.text,
             bounding_box=None,
-            data=result.model_dump()
+            metadata=result.model_dump()
         )
 
     def extract_content(self, raw_result: Dict[str, Any]) -> str:

@@ -64,3 +64,6 @@ htmlcov/
 .coverage
 .coverage.*
 coverage.xml
+
+# Claude Code
+.claude/

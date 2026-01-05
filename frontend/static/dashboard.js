@@ -156,19 +156,19 @@ function handleWebSocketMessage(message) {
             // Heartbeat acknowledged
             break;
 
-        case 'edith_status':
-            // Update EDITH vision status
-            const edithStatus = document.getElementById('edithStatus');
-            const edithMode = document.getElementById('edithMode');
-            const edithPill = document.querySelector('.edith-pill');
+        case 'vision_status':
+            // Update WHAM Vision status
+            const visionStatus = document.getElementById('visionStatus');
+            const visionMode = document.getElementById('visionMode');
+            const visionPill = document.querySelector('.vision-pill');
 
-            if (edithStatus && edithMode && edithPill) {
+            if (visionStatus && visionMode && visionPill) {
                 if (message.data.active) {
-                    edithMode.textContent = message.data.current_detection || 'Scanning';
-                    edithPill.classList.add('active');
+                    visionMode.textContent = message.data.current_detection || 'Scanning';
+                    visionPill.classList.add('active');
                 } else {
-                    edithMode.textContent = 'Idle';
-                    edithPill.classList.remove('active');
+                    visionMode.textContent = 'Idle';
+                    visionPill.classList.remove('active');
                 }
             }
             break;
@@ -269,6 +269,10 @@ function initTabs() {
                     break;
                 case 'academic':
                     // Academic tab loaded on demand via tool buttons
+                    break;
+                case 'homework':
+                    loadHomeworkHistory();
+                    loadHomeworkStats();
                     break;
                 case 'poker-lab':
                     loadPokerSessions();
@@ -1841,6 +1845,238 @@ async function startFocus() {
 async function startPoker() {
     alert('Poker mode would start here.\n\nPoker integration coming soon.');
 }
+
+// ============================================================
+// Homework Tab (Phase 7)
+// ============================================================
+
+let selectedHomeworkFile = null;
+
+// Initialize homework file input
+document.addEventListener('DOMContentLoaded', () => {
+    const fileInput = document.getElementById('homeworkFile');
+    if (fileInput) {
+        fileInput.addEventListener('change', handleHomeworkFileSelect);
+    }
+
+    // Initialize KaTeX auto-render when available
+    if (typeof renderMathInElement !== 'undefined') {
+        initKaTeX();
+    }
+});
+
+function initKaTeX() {
+    // Auto-render math in elements with class 'math-display'
+    document.querySelectorAll('.math-display').forEach(el => {
+        renderMathInElement(el, {
+            delimiters: [
+                {left: '$$', right: '$$', display: true},
+                {left: '$', right: '$', display: false},
+                {left: '\\[', right: '\\]', display: true},
+                {left: '\\(', right: '\\)', display: false}
+            ],
+            throwOnError: false
+        });
+    });
+}
+
+function handleHomeworkFileSelect(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    // Validate file type and size
+    if (!['image/jpeg', 'image/png'].includes(file.type)) {
+        alert('Please select a JPEG or PNG image');
+        return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+        alert('File too large. Maximum size is 10MB');
+        return;
+    }
+
+    selectedHomeworkFile = file;
+
+    // Show preview
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        document.getElementById('homeworkImage').src = e.target.result;
+        document.getElementById('homeworkPreview').style.display = 'block';
+        document.getElementById('homeworkSolution').style.display = 'none';
+    };
+    reader.readAsDataURL(file);
+}
+
+async function solveHomework() {
+    if (!selectedHomeworkFile) {
+        alert('Please select an image first');
+        return;
+    }
+
+    const solutionDiv = document.getElementById('homeworkSolution');
+    solutionDiv.style.display = 'block';
+    solutionDiv.innerHTML = '<p class="hint">Analyzing and solving... 🔍</p>';
+
+    try {
+        const formData = new FormData();
+        formData.append('file', selectedHomeworkFile);
+
+        const response = await fetch(`${API_BASE}/homework/solve`, {
+            method: 'POST',
+            body: formData
+        });
+
+        if (!response.ok) {
+            throw new Error(`API error: ${response.status}`);
+        }
+
+        const result = await response.json();
+        displayHomeworkSolution(result);
+
+        // Refresh history
+        loadHomeworkHistory();
+        loadHomeworkStats();
+    } catch (error) {
+        console.error('Failed to solve homework:', error);
+        solutionDiv.innerHTML = '<p class="empty">Failed to solve problem. Check console for details.</p>';
+    }
+}
+
+function displayHomeworkSolution(result) {
+    const solutionDiv = document.getElementById('homeworkSolution');
+
+    if (!result.success) {
+        solutionDiv.innerHTML = `
+            <div class="solution-error">
+                <h3>Unable to Solve</h3>
+                <p>${result.error_message || 'No math equation detected in image'}</p>
+            </div>
+        `;
+        return;
+    }
+
+    // Display problem equation
+    const equationEl = document.getElementById('solutionEquation');
+    equationEl.textContent = result.problem.equation;
+    if (typeof katex !== 'undefined') {
+        try {
+            katex.render(result.problem.equation, equationEl, {
+                throwOnError: false,
+                displayMode: true
+            });
+        } catch (e) {
+            equationEl.textContent = result.problem.equation;
+        }
+    }
+
+    // Display problem type badge
+    document.getElementById('solutionType').textContent = result.problem.problem_type.replace('_', ' ');
+
+    // Display steps
+    const stepsEl = document.getElementById('solutionSteps');
+    stepsEl.innerHTML = result.solution_steps.map(step => `<li>${step}</li>`).join('');
+
+    // Display explanation
+    document.getElementById('solutionExplanation').textContent = result.concept_explanation || 'No additional context available.';
+
+    // Display meta
+    document.getElementById('solutionTool').textContent = result.tool_used;
+    document.getElementById('solutionTime').textContent = `${result.execution_time_ms.toFixed(0)}ms`;
+
+    solutionDiv.style.display = 'block';
+
+    // Re-render KaTeX in solution
+    if (typeof renderMathInElement !== 'undefined') {
+        renderMathInElement(solutionDiv, {
+            delimiters: [
+                {left: '$$', right: '$$', display: true},
+                {left: '$', right: '$', display: false},
+                {left: '\\[', right: '\\]', display: true},
+                {left: '\\(', right: '\\)', display: false}
+            ],
+            throwOnError: false
+        });
+    }
+}
+
+async function loadHomeworkHistory() {
+    const historyDiv = document.getElementById('homeworkHistory');
+    const typeFilter = document.getElementById('homeworkTypeFilter')?.value || '';
+    const starredOnly = document.getElementById('starredOnly')?.checked || false;
+
+    try {
+        let url = `/homework/history?limit=20`;
+        if (typeFilter) url += `&problem_type=${typeFilter}`;
+        if (starredOnly) url += `&starred_only=true`;
+
+        const data = await api(url);
+        renderHomeworkHistory(data.entries, data.total);
+    } catch (error) {
+        console.error('Failed to load homework history:', error);
+        historyDiv.innerHTML = '<p class="empty">Failed to load history</p>';
+    }
+}
+
+function renderHomeworkHistory(entries, total) {
+    const historyDiv = document.getElementById('homeworkHistory');
+
+    if (entries.length === 0) {
+        historyDiv.innerHTML = '<p class="empty">No problems solved yet. Upload an image to get started!</p>';
+        return;
+    }
+
+    historyDiv.innerHTML = entries.map(entry => {
+        const date = new Date(entry.timestamp * 1000);
+        const dateStr = date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+        const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const starClass = entry.starred ? 'starred' : '';
+
+        return `
+            <div class="history-item">
+                <div class="history-header">
+                    <span class="history-equation">${entry.problem_latex.substring(0, 40)}${entry.problem_latex.length > 40 ? '...' : ''}</span>
+                    <button class="star-btn ${starClass}" onclick="toggleHomeworkStar('${entry.id}', ${entry.starred})">
+                        ${entry.starred ? '⭐' : '☆'}
+                    </button>
+                </div>
+                <div class="history-meta">
+                    <span class="history-type">${entry.problem_type.replace('_', ' ')}</span>
+                    <span class="history-date">${dateStr} ${timeStr}</span>
+                </div>
+                <div class="history-summary">${entry.solution_summary}</div>
+            </div>
+        `;
+    }).join('');
+}
+
+async function toggleHomeworkStar(entryId, currentStarred) {
+    try {
+        await fetch(`${API_BASE}/homework/history/${entryId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ starred: !currentStarred })
+        });
+        loadHomeworkHistory();
+        loadHomeworkStats();
+    } catch (error) {
+        console.error('Failed to toggle star:', error);
+    }
+}
+
+async function loadHomeworkStats() {
+    try {
+        const stats = await api('/homework/stats');
+
+        document.getElementById('homeworkTotal').textContent = stats.total_count;
+        document.getElementById('homeworkRecent').textContent = stats.recent_count;
+        document.getElementById('homeworkStarred').textContent = stats.starred_count;
+    } catch (error) {
+        console.error('Failed to load homework stats:', error);
+    }
+}
+
+// ============================================================
+// Keyboard Shortcuts
+// ============================================================
 
 // Keyboard shortcut for quick capture (Ctrl/Cmd + K)
 document.addEventListener('keydown', (e) => {

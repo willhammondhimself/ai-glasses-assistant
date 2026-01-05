@@ -1,5 +1,5 @@
 """
-EDITH - Environmental Detection and Image Tracking Helper.
+WHAM Vision - Environmental Detection and Image Tracking Helper.
 Background scanning for proactive assistance.
 """
 import asyncio
@@ -21,7 +21,7 @@ except ImportError:
 
 
 class DetectionType(Enum):
-    """Types of content EDITH can detect."""
+    """Types of content WHAM Vision can detect."""
     EQUATION = "equation"
     CODE = "code"
     TEXT = "text"
@@ -47,7 +47,7 @@ class Detection:
 
 @dataclass
 class ScanConfig:
-    """EDITH scanning configuration."""
+    """WHAM Vision scanning configuration."""
     enabled: bool = True
     scan_interval_seconds: float = 5.0
     battery_saver_interval: float = 15.0
@@ -56,9 +56,9 @@ class ScanConfig:
     detection_types: List[str] = field(default_factory=lambda: ["equation", "code", "text"])
 
 
-class EdithScanner:
+class VisionScanner:
     """
-    EDITH Background Scanner.
+    WHAM Vision Background Scanner.
 
     Periodically captures images and looks for:
     - Equations (offer to solve)
@@ -94,12 +94,12 @@ class EdithScanner:
     async def start(self):
         """Start background scanning."""
         if not self.config.enabled:
-            logger.info("EDITH disabled in config")
+            logger.info("Vision scanner disabled in config")
             return
 
         self._running = True
         self._scan_task = asyncio.create_task(self._scan_loop())
-        logger.info("EDITH scanner started")
+        logger.info("Vision scanner started")
 
     async def stop(self):
         """Stop background scanning."""
@@ -110,7 +110,7 @@ class EdithScanner:
                 await self._scan_task
             except asyncio.CancelledError:
                 pass
-        logger.info("EDITH scanner stopped")
+        logger.info("Vision scanner stopped")
 
     def set_battery_saver(self, enabled: bool):
         """Enable/disable battery saver mode."""
@@ -124,16 +124,16 @@ class EdithScanner:
     async def pause(self):
         """Pause scanning without stopping."""
         self._paused = True
-        logger.info("EDITH paused")
+        logger.info("Vision scanner paused")
 
     async def resume(self):
         """Resume scanning."""
         self._paused = False
-        logger.info("EDITH resumed")
+        logger.info("Vision scanner resumed")
 
     @property
     def is_paused(self) -> bool:
-        """Check if EDITH is paused."""
+        """Check if vision scanner is paused."""
         return self._paused
 
     async def _scan_loop(self):
@@ -453,7 +453,7 @@ class EdithScanner:
 # Suggestion generator
 class SuggestionGenerator:
     """
-    Generates helpful suggestions based on EDITH detections.
+    Generates helpful suggestions based on WHAM Vision detections.
     """
 
     SUGGESTIONS = {
@@ -490,9 +490,9 @@ class SuggestionGenerator:
 
 
 # Test
-async def test_edith():
-    """Test EDITH scanner."""
-    print("=== EDITH Scanner Test ===\n")
+async def test_vision():
+    """Test WHAM Vision scanner."""
+    print("=== WHAM Vision Scanner Test ===\n")
 
     async def mock_capture():
         # Return None (no camera in test)
@@ -509,18 +509,18 @@ async def test_edith():
         detection_types=["equation", "code", "text", "face", "qr_code"]
     )
 
-    edith = EdithScanner(
+    scanner = VisionScanner(
         config=config,
         capture_image=mock_capture,
         on_detection=on_detect
     )
 
-    print("Starting EDITH (will run for 5 seconds)...")
-    await edith.start()
+    print("Starting Vision scanner (will run for 5 seconds)...")
+    await scanner.start()
     await asyncio.sleep(5)
-    await edith.stop()
-    print("EDITH stopped")
+    await scanner.stop()
+    print("Vision scanner stopped")
 
 
 if __name__ == "__main__":
-    asyncio.run(test_edith())
+    asyncio.run(test_vision())

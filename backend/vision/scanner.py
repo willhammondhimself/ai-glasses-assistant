@@ -97,9 +97,9 @@ class StareTracker:
         return int((self.last_seen - self.first_seen).total_seconds() * 1000)
 
 
-class EdithScanner:
+class VisionScanner:
     """
-    EDITH Proactive Scanner Engine
+    WHAM Vision Proactive Scanner Engine
 
     Continuously analyzes camera frames to detect:
     - Math equations (auto-solve suggestions)

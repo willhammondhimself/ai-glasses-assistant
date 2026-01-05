@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WHAM Dashboard</title>
     <link rel="stylesheet" href="/static/dashboard.css">
+    <!-- KaTeX for LaTeX math rendering -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
 </head>
 <body>
     <!-- Header -->
@@ -27,11 +31,11 @@
                 <span id="todayCost">$0.00</span>
                 <span class="cost-budget">/ $5.00</span>
             </div>
-            <div class="stat-pill edith-pill">
+            <div class="stat-pill vision-pill">
                 <span class="stat-icon">👁️</span>
-                <div class="edith-status">
-                    <span id="edithStatus" class="edith-label">EDITH</span>
-                    <span id="edithMode" class="edith-mode">Idle</span>
+                <div class="vision-status">
+                    <span id="visionStatus" class="vision-label">Vision</span>
+                    <span id="visionMode" class="vision-mode">Idle</span>
                 </div>
             </div>
         </div>
@@ -55,6 +59,7 @@
             <button class="tab" data-tab="research">Research</button>
             <button class="tab" data-tab="skills">Skills</button>
             <button class="tab" data-tab="academic">Academic</button>
+            <button class="tab" data-tab="homework">Homework</button>
             <button class="tab" data-tab="poker-lab">Poker Lab</button>
         </nav>
 
@@ -422,6 +427,92 @@
                             <button onclick="prereadPaper()">Analyze Paper</button>
                         </div>
                         <div id="paperSummaryResult" class="tool-result"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tab: Homework (Phase 7) -->
+        <section class="tab-content" id="tab-homework">
+            <div class="grid-2">
+                <!-- Left: Upload & Solve -->
+                <div class="card">
+                    <h2 class="card-title">Solve Problem</h2>
+                    <p class="hint">Upload a photo of your math problem and WHAM will solve it step-by-step.</p>
+
+                    <div class="upload-zone" id="homeworkUploadZone">
+                        <input type="file" id="homeworkFile" accept="image/jpeg,image/png" hidden>
+                        <div class="upload-content" onclick="document.getElementById('homeworkFile').click()">
+                            <span class="upload-icon">📷</span>
+                            <p>Click to upload or drag & drop</p>
+                            <p class="upload-hint">JPEG or PNG, max 10MB</p>
+                        </div>
+                    </div>
+
+                    <div id="homeworkPreview" class="homework-preview" style="display: none;">
+                        <img id="homeworkImage" src="" alt="Problem preview">
+                        <button class="action-btn" onclick="solveHomework()">Solve This</button>
+                    </div>
+
+                    <!-- Solution Display -->
+                    <div id="homeworkSolution" class="homework-solution" style="display: none;">
+                        <h3>Solution</h3>
+                        <div class="solution-problem">
+                            <span class="label">Problem:</span>
+                            <div id="solutionEquation" class="math-display"></div>
+                            <span id="solutionType" class="problem-type-badge"></span>
+                        </div>
+                        <div class="solution-steps">
+                            <span class="label">Steps:</span>
+                            <ol id="solutionSteps"></ol>
+                        </div>
+                        <div class="solution-explanation">
+                            <span class="label">Concept:</span>
+                            <p id="solutionExplanation"></p>
+                        </div>
+                        <div class="solution-meta">
+                            <span id="solutionTool" class="tool-badge"></span>
+                            <span id="solutionTime" class="time-badge"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: History -->
+                <div class="card">
+                    <h2 class="card-title">Problem History</h2>
+                    <div class="filter-row">
+                        <select id="homeworkTypeFilter" class="filter-select" onchange="loadHomeworkHistory()">
+                            <option value="">All Types</option>
+                            <option value="arithmetic">Arithmetic</option>
+                            <option value="algebra">Algebra</option>
+                            <option value="calculus_derivative">Derivatives</option>
+                            <option value="calculus_integral">Integrals</option>
+                            <option value="trigonometry">Trigonometry</option>
+                            <option value="polynomial">Polynomials</option>
+                        </select>
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="starredOnly" onchange="loadHomeworkHistory()">
+                            Starred only
+                        </label>
+                    </div>
+
+                    <div id="homeworkHistory" class="homework-history">
+                        <div class="loading">Loading history...</div>
+                    </div>
+
+                    <div class="homework-stats" id="homeworkStats">
+                        <div class="stat-item">
+                            <span class="stat-value" id="homeworkTotal">0</span>
+                            <span class="stat-label">Problems</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-value" id="homeworkRecent">0</span>
+                            <span class="stat-label">This Week</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-value" id="homeworkStarred">0</span>
+                            <span class="stat-label">Starred</span>
+                        </div>
                     </div>
                 </div>
             </div>

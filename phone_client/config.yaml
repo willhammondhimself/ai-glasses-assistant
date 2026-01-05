@@ -69,7 +69,7 @@ poker:
   cache_enabled: true
   cache_ttl_hours: 24
 
-edith:
+vision:
   enabled: true
   scan_interval_seconds: 5
   battery_saver_interval: 15  # When battery < 30%
