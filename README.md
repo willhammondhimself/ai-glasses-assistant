@@ -1,34 +1,24 @@
-# AI Glasses Assistant - WHAM (Will's Helpful Assistant Module)
+# AI Glasses Assistant - WHAM
 
-My personal AR glasses project for the Brilliant Labs Halo. Built this to prep for quant interviews at Jane Street/Cit Sec/HRT because staring at flashcards got old fast.
+My personal AR glasses project for the Brilliant Labs Halo.
 
-Think Iron Man's JARVIS meets Tony Stark's workshop - but personalized for my workflow.
+Think Iron Man's JARVIS meets Tony Stark's workshop - but personalized for me.
 
-## What This Actually Does
+## What This Does
 
-**Mental Math Mode** - Throws arithmetic at you with quant-trader mental-math interview time pressure. D1 problems give you 2 seconds, D5 gives you 20. Miss the window and WHAM will let you know about it (politely, but firmly).
+**Mental Math Mode**
 
-**Poker Mode** - Point at cards, get GTO analysis. Uses Claude to break down preflop ranges, pot odds, bet sizing. Useful for home games when you're trying to figure out if that river shove is a bluff.
+**Poker Mode**
 
-**Code Debug** - Still WIP but the idea is to look at code on a screen and have WHAM explain what's broken. Currently does basic static analysis (catches bare excepts, eval() usage, the usual).
+**Code Debug**
 
-**WHAM Vision** - Background vision that notices when you're staring at an equation or code snippet for 1.5+ seconds, then offers to help. Tries not to be annoying about it.
+**WHAM Vision**
 
-**Morning Briefing** - "Good morning sir, it's 47 degrees and you have Stochastic Calc at 10." That kind of thing.
+**Morning Briefing**
 
-**Quick Capture** - Say something, it remembers it. Tags and categorizes automatically so I don't have to.
+**Quick Capture**
 
-**Focus Mode** - Pomodoro but WHAM tracks it and roasts you if you keep getting distracted.
-
-## The WHAM Personality
-
-I got tired of robotic AI responses, so everything goes through a personality layer that makes it sound like you have a personal AI assistant in your ear:
-
-- "2.3s - that's Jane Street caliber, sir."
-- "The correct answer was 847. Onward."
-- "Twenty consecutive. Shall I notify the trading firms?"
-
-It tracks your session, knows when you're warming up vs in the zone vs struggling, and adjusts accordingly. The streak system has tiers (bronze through legendary) because gamification works on me.
+**Focus Mode**
 
 ## Project Structure
 
@@ -97,9 +87,9 @@ The poker thing started because I play home games and wanted to actually underst
 
 ## Status
 
-Personal project, not production software. Mental math works great, poker analysis works if you have the API key, web dashboard is fully functional without glasses. WHAM Vision scanning is operational with Gemini 2.0 Flash for screen detection.
+Of course, this is a personal project, so it's not poerfect software. In my testing, mental math works great, poker analysis works if you have an API key, web dashboard is fully functional without glasses. WHAM Vision scanning is operational with Gemini 2.0 Flash for screen detection.
 
-Still TODO: better Halo hardware integration, and it's hardcoded to call everyone "sir" and assume you're me.
+Still TODO: Halo hardware integration (mine are still shipping), and it's hardcoded to call everyone "sir" and assume you're me.
 
 ## Tech Stack
 
