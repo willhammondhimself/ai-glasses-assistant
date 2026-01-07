@@ -6,19 +6,19 @@ Think Iron Man's JARVIS meets Tony Stark's workshop - but personalized for me.
 
 ## What This Does
 
-**Mental Math Mode**
+- **Mental Math Mode**
 
-**Poker Mode**
+- **Poker Mode**
 
-**Code Debug**
+- **Code Debug**
 
-**WHAM Vision**
+- **WHAM Vision**
 
-**Morning Briefing**
+- **Morning Briefing**
 
-**Quick Capture**
+- **Quick Capture**
 
-**Focus Mode**
+- **Focus Mode**
 
 ## Project Structure
 
