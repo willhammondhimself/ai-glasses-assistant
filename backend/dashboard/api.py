@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query, WebSocket, UploadFile, File
+from fastapi import APIRouter, HTTPException, Query, WebSocket, UploadFile, File, Form
 from fastapi.responses import HTMLResponse
 
 # Import WebSocket manager for live updates
@@ -100,7 +100,7 @@ def _get_quick_capture():
     """Lazy-load QuickCapture instance."""
     global _quick_capture
     if _quick_capture is None:
-        from modes.quick_capture import QuickCapture
+        from phone_client.modes.quick_capture import QuickCapture
         _quick_capture = QuickCapture(_get_config(), storage_dir=str(PHONE_CLIENT_PATH / "captures"))
     return _quick_capture
 
@@ -124,7 +124,7 @@ def _get_focus_mode():
     """Lazy-load FocusMode instance."""
     global _focus_mode
     if _focus_mode is None:
-        from modes.focus_mode import FocusMode
+        from phone_client.modes.focus_mode import FocusMode
         _focus_mode = FocusMode(_get_config())
     return _focus_mode
 
@@ -238,7 +238,7 @@ async def create_capture(capture: CaptureCreate):
     qc = _get_quick_capture()
 
     # Map API types to internal types
-    from modes.quick_capture import CaptureType as InternalCaptureType
+    from phone_client.modes.quick_capture import CaptureType as InternalCaptureType
 
     type_map = {
         APICaptureType.NOTE: InternalCaptureType.VOICE,
@@ -462,6 +462,235 @@ async def get_memory_stats():
         by_category=stats["by_type"],
         indexed_keywords=stats["indexed_keywords"]
     )
+
+
+# ============================================================
+# RAG Document Routes
+# ============================================================
+
+# Lazy-loaded RAG store
+_rag_store = None
+
+
+def _get_rag_store():
+    """Get singleton RAGStore instance."""
+    global _rag_store
+    if _rag_store is None:
+        from backend.rag import get_rag_store
+        _rag_store = get_rag_store()
+    return _rag_store
+
+
+@router.post("/api/rag/upload")
+async def upload_rag_document(
+    file: UploadFile = File(...),
+    category: str = Form("general")
+):
+    """
+    Upload and index a document for RAG retrieval.
+
+    Accepts: PDF, TXT files (max 10MB)
+    Returns: Document ID and character count
+    """
+    # Validate file type
+    allowed_types = ["text/plain", "application/pdf"]
+    if file.content_type not in allowed_types:
+        raise HTTPException(400, f"Only TXT and PDF supported, got {file.content_type}")
+
+    # Read file
+    content_bytes = await file.read()
+    if len(content_bytes) > 10 * 1024 * 1024:
+        raise HTTPException(400, "File too large (max 10MB)")
+
+    # Extract text based on type
+    if file.content_type == "application/pdf":
+        try:
+            import fitz  # PyMuPDF
+            doc = fitz.open(stream=content_bytes, filetype="pdf")
+            content = "\n".join(page.get_text() for page in doc)
+            doc.close()
+        except Exception as e:
+            raise HTTPException(400, f"PDF extraction failed: {str(e)}")
+    else:
+        try:
+            content = content_bytes.decode("utf-8")
+        except UnicodeDecodeError:
+            raise HTTPException(400, "Invalid text encoding (expected UTF-8)")
+
+    if not content.strip():
+        raise HTTPException(400, "Document is empty")
+
+    # Add to RAG store
+    store = _get_rag_store()
+    doc_id = await store.add_document(content, file.filename, category)
+
+    return {
+        "success": True,
+        "doc_id": doc_id,
+        "filename": file.filename,
+        "chars": len(content),
+        "category": category
+    }
+
+
+@router.get("/api/rag/query")
+async def query_rag_documents(
+    q: str = Query(..., min_length=1, description="Search query"),
+    category: Optional[str] = Query(None, description="Filter by category"),
+    top_k: int = Query(3, ge=1, le=10, description="Number of results")
+):
+    """
+    Semantic search across uploaded documents.
+
+    Returns relevant document chunks with AI-generated answer.
+    """
+    store = _get_rag_store()
+    results = await store.query(q, top_k=top_k, category=category)
+
+    if not results:
+        return {
+            "query": q,
+            "answer": "No relevant documents found. Try uploading some documents first.",
+            "sources": []
+        }
+
+    # Build context from top results
+    context = "\n\n---\n\n".join(
+        f"[{r['metadata'].get('filename', 'unknown')}]:\n{r['content'][:2000]}"
+        for r in results
+    )
+
+    # Generate answer using Gemini
+    from phone_client.api_clients.gemini_client import GeminiClient
+    gemini = GeminiClient()
+    prompt = f"""Based on the following documents, answer this question: {q}
+
+Documents:
+{context}
+
+Provide a concise, helpful answer based only on the information in the documents above."""
+
+    try:
+        answer = await gemini.quick_query(prompt)
+    except Exception as e:
+        answer = f"Error generating answer: {str(e)}"
+
+    return {
+        "query": q,
+        "answer": answer,
+        "sources": [
+            {
+                "filename": r["metadata"].get("filename", "unknown"),
+                "score": round(r["score"], 3),
+                "snippet": r["content"][:200] + "..." if len(r["content"]) > 200 else r["content"]
+            }
+            for r in results
+        ]
+    }
+
+
+@router.get("/api/rag/stats")
+async def get_rag_stats():
+    """Get RAG storage statistics."""
+    store = _get_rag_store()
+    return store.get_stats()
+
+
+@router.get("/api/rag/documents")
+async def list_rag_documents(limit: int = Query(50, ge=1, le=100)):
+    """List all uploaded documents."""
+    store = _get_rag_store()
+    return {"documents": store.list_documents(limit=limit)}
+
+
+# ============================================================
+# Agent Routes (Phase 9)
+# ============================================================
+
+# Lazy-loaded agent
+_agent_executor = None
+
+
+def _get_agent():
+    """Get singleton AgentExecutor instance."""
+    global _agent_executor
+    if _agent_executor is None:
+        from backend.agent import get_agent
+        _agent_executor = get_agent()
+    return _agent_executor
+
+
+@router.post("/api/agent/chat")
+async def agent_chat(request: dict):
+    """
+    Send message to agent for tool execution.
+
+    Request body:
+        {"message": "Clear my afternoon"}
+
+    Returns:
+        {
+            "response": "I've cleared 2 events from your afternoon.",
+            "tool_used": "calendar",
+            "tool_result": "Cleared 2 events",
+            "success": true
+        }
+    """
+    message = request.get("message", "")
+
+    if not message:
+        raise HTTPException(400, "Message required")
+
+    agent = _get_agent()
+    result = await agent.run(message)
+
+    # Broadcast via WebSocket for real-time UI updates
+    try:
+        await broadcast_dashboard_update("agent_response", result)
+    except Exception:
+        pass  # WebSocket optional
+
+    # Broadcast to HUD clients for AR glasses overlay
+    try:
+        from backend.websocket.hud_handler import broadcast_to_hud
+        # Determine mode based on tool used
+        mode = result.get("tool_used") or "all"
+        await broadcast_to_hud(result, mode=mode)
+    except Exception:
+        pass  # HUD optional
+
+    return result
+
+
+@router.get("/api/agent/tools")
+async def list_agent_tools():
+    """List available agent tools."""
+    agent = _get_agent()
+    return {
+        "tools": [
+            {"name": t.name, "description": t.description}
+            for t in agent.tools.values()
+        ]
+    }
+
+
+@router.get("/api/agent/calendar/status")
+async def calendar_auth_status():
+    """Check calendar authentication status."""
+    from backend.agent.tools.calendar import CalendarTool
+    cal = CalendarTool()
+    return {
+        "authenticated": cal.is_configured(),
+        "message": "Apple Calendar connected" if cal.is_configured() else "Calendar in mock mode (set APPLE_ID & APPLE_APP_PASSWORD)"
+    }
+
+
+@router.post("/api/agent/reset")
+async def reset_agent_chat():
+    """Reset agent conversation history."""
+    agent = _get_agent()
+    agent.reset_chat()
+    return {"success": True, "message": "Agent conversation reset"}
 
 
 # ============================================================
@@ -716,7 +945,7 @@ def get_poker_analyzer():
     global _poker_analyzer
     if _poker_analyzer is None:
         try:
-            from intelligence.poker_analyzer import PokerAnalyzer
+            from phone_client.intelligence.poker_analyzer import PokerAnalyzer
             _poker_analyzer = PokerAnalyzer()
         except Exception as e:
             import logging
@@ -969,7 +1198,7 @@ async def get_research_history(days: int = Query(7, ge=1, le=90)):
     Returns:
         Dict with queries, total_queries, total_cost, period_days
     """
-    from intelligence.pattern_analyzer import PatternAnalyzer
+    from phone_client.intelligence.pattern_analyzer import PatternAnalyzer
 
     analyzer = PatternAnalyzer()
     sessions = analyzer._load_sessions(days)
@@ -1004,7 +1233,7 @@ async def get_skill_metrics(days: int = Query(30, ge=7, le=90)):
     Returns:
         Dict with skill metrics for poker, homework, focus, and overall consistency
     """
-    from intelligence.pattern_analyzer import PatternAnalyzer
+    from phone_client.intelligence.pattern_analyzer import PatternAnalyzer
 
     analyzer = PatternAnalyzer()
     sessions = analyzer._load_sessions(days)
@@ -1070,7 +1299,7 @@ async def concept_bridge(request: dict):
     Returns:
         ConceptBridge dataclass as dict
     """
-    from intelligence.academic_assistant import AcademicAssistant
+    from phone_client.intelligence.academic_assistant import AcademicAssistant
 
     assistant = AcademicAssistant()
 
@@ -1101,7 +1330,7 @@ async def derivation(request: dict):
     Returns:
         DerivationSteps dataclass as dict
     """
-    from intelligence.academic_assistant import AcademicAssistant
+    from phone_client.intelligence.academic_assistant import AcademicAssistant
 
     assistant = AcademicAssistant()
 
@@ -1131,7 +1360,7 @@ async def problem_strategy(request: dict):
     Returns:
         ProblemStrategy dataclass as dict
     """
-    from intelligence.academic_assistant import AcademicAssistant
+    from phone_client.intelligence.academic_assistant import AcademicAssistant
 
     assistant = AcademicAssistant()
 
@@ -1161,7 +1390,7 @@ async def exam_pattern(request: dict):
     Returns:
         ExamPattern dataclass as dict
     """
-    from intelligence.academic_assistant import AcademicAssistant
+    from phone_client.intelligence.academic_assistant import AcademicAssistant
 
     assistant = AcademicAssistant()
 
@@ -1191,7 +1420,7 @@ async def notation(request: dict):
     Returns:
         NotationExplanation dataclass as dict
     """
-    from intelligence.academic_assistant import AcademicAssistant
+    from phone_client.intelligence.academic_assistant import AcademicAssistant
 
     assistant = AcademicAssistant()
 
@@ -1220,7 +1449,7 @@ async def visual_intuition(request: dict):
     Returns:
         VisualIntuition dataclass as dict
     """
-    from intelligence.academic_assistant import AcademicAssistant
+    from phone_client.intelligence.academic_assistant import AcademicAssistant
 
     assistant = AcademicAssistant()
 
@@ -1249,7 +1478,7 @@ async def formula_sheet(request: dict):
     Returns:
         FormulaSheet dataclass as dict
     """
-    from intelligence.academic_assistant import AcademicAssistant
+    from phone_client.intelligence.academic_assistant import AcademicAssistant
 
     assistant = AcademicAssistant()
 
@@ -1277,7 +1506,7 @@ async def paper_summary(request: dict):
     Returns:
         PaperSummary dataclass as dict
     """
-    from intelligence.academic_assistant import AcademicAssistant
+    from phone_client.intelligence.academic_assistant import AcademicAssistant
 
     assistant = AcademicAssistant()
 
@@ -1535,17 +1764,27 @@ async def _solve_with_academic_tools(
     Returns:
         dict with solution_steps, concept_explanation, tool_used
     """
-    from intelligence.academic_assistant import AcademicAssistant
+    from phone_client.intelligence.academic_assistant import AcademicAssistant
 
     assistant = AcademicAssistant()
 
     # Route based on problem type
     if problem_type in ["calculus_derivative", "calculus_integral", "limit"]:
         # Use derivation explainer for calculus
+        # Returns DerivationSteps with: steps (List[Dict]), final_result, context
         result = await assistant.explain_derivation(equation, context=problem_type)
+        # Extract step explanations from the dict structure
+        step_texts = []
+        for step in (result.steps or []):
+            if isinstance(step, dict):
+                expr = step.get('expression', '')
+                expl = step.get('explanation', '')
+                step_texts.append(f"{expr}: {expl}" if expr else expl)
+            else:
+                step_texts.append(str(step) if step else "")
         return {
-            "solution_steps": result.steps,
-            "concept_explanation": result.physical_meaning or result.common_mistakes or "",
+            "solution_steps": step_texts,
+            "concept_explanation": result.final_result or result.context or "",
             "tool_used": "derivation_explainer"
         }
 
@@ -1553,8 +1792,8 @@ async def _solve_with_academic_tools(
         # Use problem strategy for algebraic problems
         result = await assistant.generate_problem_strategy(f"{problem_type}: {equation}")
         return {
-            "solution_steps": [step.action for step in result.steps],
-            "concept_explanation": result.prerequisites[0] if result.prerequisites else "",
+            "solution_steps": result.approach_steps,
+            "concept_explanation": result.key_insights[0] if result.key_insights else "",
             "tool_used": "problem_strategy"
         }
 
@@ -1566,17 +1805,77 @@ async def _solve_with_academic_tools(
             level="undergraduate"
         )
         return {
-            "solution_steps": [f"{c.shared_concept}: {c.explanation}" for c in result.connections],
-            "concept_explanation": result.source_context,
+            "solution_steps": [f"{r['target']}: {r['relationship']}" for r in result.relationships],
+            "concept_explanation": result.importance or "",
             "tool_used": "concept_bridge"
+        }
+
+    elif problem_type == "arithmetic":
+        # Simple arithmetic - compute directly, give concise answer
+        import re
+
+        # Clean up the equation for evaluation
+        expr = equation.replace('=', '').strip()
+        expr = expr.replace('÷', '/').replace('×', '*').replace('−', '-')
+        # Handle implicit multiplication: 2(3) -> 2*(3)
+        expr = re.sub(r'(\d)\(', r'\1*(', expr)
+
+        try:
+            # Safely evaluate the arithmetic expression
+            # Only allow basic math operations
+            allowed_chars = set('0123456789+-*/().^ ')
+            if all(c in allowed_chars for c in expr):
+                expr_for_eval = expr.replace('^', '**')
+                result_value = eval(expr_for_eval)
+
+                # Format as integer if whole number
+                if isinstance(result_value, float) and result_value.is_integer():
+                    result_value = int(result_value)
+
+                return {
+                    "solution_steps": [
+                        f"Expression: {equation}",
+                        f"Evaluate following order of operations (PEMDAS)",
+                        f"Answer: {result_value}"
+                    ],
+                    "concept_explanation": f"The answer is {result_value}",
+                    "tool_used": "arithmetic_calculator"
+                }
+        except Exception:
+            pass  # Fall through to default handler if evaluation fails
+
+        # If direct evaluation fails, use a simple prompt
+        result = await assistant.explain_derivation(equation, context="simple arithmetic - give a SHORT 2-3 step solution with a clear numerical answer")
+        step_texts = []
+        for step in (result.steps or [])[:3]:  # Limit to 3 steps
+            if isinstance(step, dict):
+                expr = step.get('expression', '')
+                expl = step.get('explanation', '')
+                step_texts.append(f"{expr}: {expl}" if expr else expl)
+            else:
+                step_texts.append(str(step) if step else "")
+        return {
+            "solution_steps": step_texts,
+            "concept_explanation": result.final_result or "",
+            "tool_used": "arithmetic_simplified"
         }
 
     else:
         # Default: use derivation explainer
+        # Returns DerivationSteps with: steps (List[Dict]), final_result, context
         result = await assistant.explain_derivation(equation, context="general mathematics")
+        # Extract step explanations from the dict structure
+        step_texts = []
+        for step in (result.steps or []):
+            if isinstance(step, dict):
+                expr = step.get('expression', '')
+                expl = step.get('explanation', '')
+                step_texts.append(f"{expr}: {expl}" if expr else expl)
+            else:
+                step_texts.append(str(step) if step else "")
         return {
-            "solution_steps": result.steps,
-            "concept_explanation": result.physical_meaning or "",
+            "solution_steps": step_texts,
+            "concept_explanation": result.final_result or result.context or "",
             "tool_used": "derivation_explainer"
         }
 
@@ -1670,12 +1969,17 @@ async def solve_homework(file: UploadFile = File(...)):
         except Exception as e:
             logger.warning(f"Failed to log homework history: {e}")
 
-        # Broadcast update to dashboard
+        # Broadcast full solution to dashboard for real-time display
         try:
-            await broadcast_dashboard_update("homework_solved", {
-                "equation": problem.equation[:50],
-                "type": problem.problem_type,
-                "tool": solution["tool_used"]
+            await broadcast_dashboard_update("homework_solution", {
+                "problem_latex": problem.equation,
+                "problem_type": problem.problem_type,
+                "solution_steps": solution["solution_steps"],
+                "concept_explanation": solution["concept_explanation"],
+                "tool_used": solution["tool_used"],
+                "execution_time_ms": execution_time_ms,
+                "success": True,
+                "confidence": problem.confidence
             })
         except Exception:
             pass  # Non-critical

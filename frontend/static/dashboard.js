@@ -173,6 +173,22 @@ function handleWebSocketMessage(message) {
             }
             break;
 
+        case 'homework_solution':
+            // Real-time homework solution push from phone client
+            handleHomeworkSolutionPush(message.data);
+            break;
+
+        case 'agent_response':
+            // Real-time agent response push for multi-client sync
+            if (message.data && message.data.response) {
+                let responseHtml = message.data.response;
+                if (message.data.tool_used) {
+                    responseHtml = `<span class="tool-badge">${message.data.tool_used}</span> ${responseHtml}`;
+                }
+                addAgentMessage('assistant', responseHtml);
+            }
+            break;
+
         default:
             console.log('Unknown message type:', message.type);
     }
@@ -225,6 +241,63 @@ function showNotification(message) {
             toast.remove();
         }
     }, 3000);
+}
+
+/**
+ * Handle real-time homework solution push from phone client.
+ * Auto-switches to Homework tab and displays the solution.
+ */
+function handleHomeworkSolutionPush(data) {
+    // Show toast notification
+    const problemPreview = data.problem_latex?.substring(0, 30) || 'New problem';
+    showNotification(`📐 Solved: ${problemPreview}...`);
+
+    // Auto-switch to Homework tab (if not already there)
+    const currentTab = document.querySelector('.tab.active')?.dataset.tab;
+    const needsTabSwitch = currentTab !== 'homework';
+
+    if (needsTabSwitch) {
+        const homeworkTabBtn = document.querySelector('[data-tab="homework"]');
+        if (homeworkTabBtn) {
+            homeworkTabBtn.click();
+        }
+    }
+
+    // Prepare the result object
+    const result = {
+        problem: {
+            equation: data.problem_latex,
+            problem_type: data.problem_type,
+            confidence: data.confidence
+        },
+        solution_steps: data.solution_steps,
+        concept_explanation: data.concept_explanation,
+        tool_used: data.tool_used,
+        execution_time_ms: data.execution_time_ms,
+        success: data.success
+    };
+
+    // Display solution - delay if tab switch needed to let DOM update
+    const displayAndScroll = () => {
+        displayHomeworkSolution(result);
+        const solutionEl = document.getElementById('homeworkSolution');
+        if (solutionEl) {
+            solutionEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    };
+
+    if (needsTabSwitch) {
+        setTimeout(displayAndScroll, 100);  // Wait for tab DOM to update
+    } else {
+        displayAndScroll();
+    }
+
+    // Refresh history to include new entry
+    setTimeout(() => {
+        if (typeof loadHomeworkHistory === 'function') {
+            loadHomeworkHistory();
+        }
+    }, 500);
 }
 
 // ============================================================
@@ -1914,7 +1987,17 @@ async function solveHomework() {
 
     const solutionDiv = document.getElementById('homeworkSolution');
     solutionDiv.style.display = 'block';
-    solutionDiv.innerHTML = '<p class="hint">Analyzing and solving... 🔍</p>';
+
+    // Show loading without destroying the structure
+    let loadingEl = document.getElementById('homeworkLoading');
+    if (!loadingEl) {
+        loadingEl = document.createElement('div');
+        loadingEl.id = 'homeworkLoading';
+        loadingEl.className = 'loading-overlay';
+        loadingEl.innerHTML = '<p class="hint">Analyzing and solving... 🔍</p>';
+        solutionDiv.prepend(loadingEl);
+    }
+    loadingEl.style.display = 'block';
 
     try {
         const formData = new FormData();
@@ -1937,12 +2020,27 @@ async function solveHomework() {
         loadHomeworkStats();
     } catch (error) {
         console.error('Failed to solve homework:', error);
-        solutionDiv.innerHTML = '<p class="empty">Failed to solve problem. Check console for details.</p>';
+        // Hide loading and show error without destroying structure
+        const loadingEl = document.getElementById('homeworkLoading');
+        if (loadingEl) loadingEl.style.display = 'none';
+        displayHomeworkSolution({ success: false, error_message: 'Failed to solve problem. Check console for details.' });
     }
 }
 
 function displayHomeworkSolution(result) {
     const solutionDiv = document.getElementById('homeworkSolution');
+
+    // Null guard - elements may not exist if tab hasn't rendered
+    if (!solutionDiv) {
+        console.error('homeworkSolution element not found in DOM');
+        return;
+    }
+
+    // Hide loading indicator if present
+    const loadingEl = document.getElementById('homeworkLoading');
+    if (loadingEl) {
+        loadingEl.style.display = 'none';
+    }
 
     if (!result.success) {
         solutionDiv.innerHTML = `
@@ -1956,6 +2054,10 @@ function displayHomeworkSolution(result) {
 
     // Display problem equation
     const equationEl = document.getElementById('solutionEquation');
+    if (!equationEl) {
+        console.error('Solution child elements not found - are you on the Homework tab?');
+        return;
+    }
     equationEl.textContent = result.problem.equation;
     if (typeof katex !== 'undefined') {
         try {
@@ -2089,4 +2191,301 @@ document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
         closeCaptureModal();
     }
+});
+
+// ============================================================
+// RAG Document Q&A Functions
+// ============================================================
+
+async function uploadRAGDoc() {
+    const fileInput = document.getElementById('ragFile');
+    const file = fileInput.files[0];
+    if (!file) return;
+
+    // Validate file type
+    const allowedTypes = ['text/plain', 'application/pdf'];
+    if (!allowedTypes.includes(file.type)) {
+        document.getElementById('ragStatus').innerHTML =
+            '<span style="color: var(--error);">Only TXT and PDF files supported</span>';
+        return;
+    }
+
+    // Validate file size (10MB)
+    if (file.size > 10 * 1024 * 1024) {
+        document.getElementById('ragStatus').innerHTML =
+            '<span style="color: var(--error);">File too large (max 10MB)</span>';
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('category', 'general');
+
+    document.getElementById('ragStatus').innerHTML =
+        '<span style="color: var(--primary);">Uploading and indexing...</span>';
+
+    try {
+        const response = await fetch(`${API_BASE}/rag/upload`, {
+            method: 'POST',
+            body: formData
+        });
+
+        const result = await response.json();
+
+        if (response.ok && result.success) {
+            document.getElementById('ragStatus').innerHTML =
+                `<span style="color: var(--success);">✓ Indexed ${result.chars.toLocaleString()} characters</span>`;
+            loadRAGStats();
+        } else {
+            document.getElementById('ragStatus').innerHTML =
+                `<span style="color: var(--error);">Error: ${result.detail || 'Upload failed'}</span>`;
+        }
+    } catch (error) {
+        console.error('RAG upload failed:', error);
+        document.getElementById('ragStatus').innerHTML =
+            `<span style="color: var(--error);">Upload failed: ${error.message}</span>`;
+    }
+
+    // Clear file input for next upload
+    fileInput.value = '';
+}
+
+async function queryRAG() {
+    const queryInput = document.getElementById('ragQuery');
+    const query = queryInput.value.trim();
+    if (!query) return;
+
+    const answerDiv = document.getElementById('ragAnswer');
+    answerDiv.innerHTML = '<p style="color: var(--primary);">Searching documents...</p>';
+
+    try {
+        const response = await fetch(`${API_BASE}/rag/query?q=${encodeURIComponent(query)}`);
+        const result = await response.json();
+
+        if (result.sources && result.sources.length > 0) {
+            answerDiv.innerHTML = `
+                <div style="background: var(--bg-secondary); padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                    <strong style="color: var(--primary);">Answer:</strong>
+                    <p style="margin-top: 8px; white-space: pre-wrap;">${escapeHtml(result.answer)}</p>
+                </div>
+                <div style="font-size: 0.9em;">
+                    <strong>Sources:</strong>
+                    <div style="margin-top: 8px; display: flex; flex-wrap: wrap; gap: 8px;">
+                        ${result.sources.map(s => `
+                            <span class="tag" title="${escapeHtml(s.snippet)}">
+                                ${escapeHtml(s.filename)} (${Math.round(s.score * 100)}%)
+                            </span>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        } else {
+            answerDiv.innerHTML = `
+                <div style="background: var(--bg-secondary); padding: 15px; border-radius: 8px;">
+                    <p>${escapeHtml(result.answer)}</p>
+                </div>
+            `;
+        }
+    } catch (error) {
+        console.error('RAG query failed:', error);
+        answerDiv.innerHTML =
+            `<p style="color: var(--error);">Query failed: ${error.message}</p>`;
+    }
+}
+
+async function loadRAGStats() {
+    try {
+        const response = await fetch(`${API_BASE}/rag/stats`);
+        const stats = await response.json();
+
+        const docCountEl = document.getElementById('ragDocCount');
+        if (docCountEl) {
+            docCountEl.innerHTML = `${stats.total_documents} document${stats.total_documents !== 1 ? 's' : ''} indexed`;
+        }
+    } catch (error) {
+        console.error('Failed to load RAG stats:', error);
+    }
+}
+
+// Helper function to escape HTML
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Load RAG stats when Memory tab is activated
+const originalLoadMemoryStats = typeof loadMemoryStats === 'function' ? loadMemoryStats : null;
+if (originalLoadMemoryStats) {
+    loadMemoryStats = async function() {
+        await originalLoadMemoryStats();
+        await loadRAGStats();
+    };
+}
+
+// ============================================================
+// AGENT FUNCTIONS (Phase 9)
+// ============================================================
+
+async function sendAgentMessage() {
+    const input = document.getElementById('agentInput');
+    const message = input.value.trim();
+    if (!message) return;
+
+    // Add user message to history
+    addAgentMessage('user', message);
+    input.value = '';
+
+    // Show thinking indicator
+    const thinkingId = addAgentMessage('assistant', '<span style="color: var(--primary);">🤔 Thinking...</span>');
+
+    try {
+        const response = await fetch(`${API_BASE}/agent/chat`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({message})
+        });
+        const result = await response.json();
+
+        // Remove thinking indicator
+        const thinkingEl = document.getElementById(thinkingId);
+        if (thinkingEl) thinkingEl.remove();
+
+        // Build response HTML
+        let responseHtml = escapeHtml(result.response);
+
+        // Add tool badge if tool was used
+        if (result.tool_used) {
+            responseHtml = `<span class="tool-badge" style="background: var(--primary); color: var(--bg); padding: 2px 8px; border-radius: 4px; font-size: 0.8em; margin-right: 8px;">🔧 ${escapeHtml(result.tool_used)}</span>${responseHtml}`;
+        }
+
+        // Add success/error indicator
+        if (result.success === false) {
+            responseHtml = `<span style="color: var(--error);">❌</span> ${responseHtml}`;
+        }
+
+        addAgentMessage('assistant', responseHtml);
+
+    } catch (error) {
+        // Remove thinking indicator
+        const thinkingEl = document.getElementById(thinkingId);
+        if (thinkingEl) thinkingEl.remove();
+
+        addAgentMessage('assistant', `<span style="color: var(--error);">❌ Error: ${escapeHtml(error.message)}</span>`);
+    }
+}
+
+function addAgentMessage(role, content) {
+    const history = document.getElementById('agentHistory');
+    const id = 'agent-msg-' + Date.now();
+
+    const msgDiv = document.createElement('div');
+    msgDiv.id = id;
+    msgDiv.className = `agent-msg agent-msg-${role}`;
+    msgDiv.innerHTML = content;
+
+    // Style based on role
+    if (role === 'user') {
+        msgDiv.style.cssText = 'background: var(--primary); color: var(--bg); align-self: flex-end; padding: 10px 15px; border-radius: 15px 15px 5px 15px; max-width: 80%; margin: 5px 0;';
+    } else {
+        msgDiv.style.cssText = 'background: var(--bg-secondary); padding: 10px 15px; border-radius: 15px 15px 15px 5px; max-width: 80%; margin: 5px 0;';
+    }
+
+    history.appendChild(msgDiv);
+    history.scrollTop = history.scrollHeight;
+
+    return id;
+}
+
+async function loadAgentTools() {
+    try {
+        const response = await fetch(`${API_BASE}/agent/tools`);
+        const data = await response.json();
+
+        const toolsDiv = document.getElementById('agentTools');
+        if (!toolsDiv) return;
+
+        if (data.tools && data.tools.length > 0) {
+            toolsDiv.innerHTML = data.tools.map(t => `
+                <div style="padding: 10px; background: var(--bg-secondary); border-radius: 8px; margin-bottom: 8px;">
+                    <strong style="color: var(--primary);">🔧 ${escapeHtml(t.name)}</strong>
+                    <p style="margin: 5px 0 0 0; font-size: 0.9em; color: var(--text-dim);">${escapeHtml(t.description)}</p>
+                </div>
+            `).join('');
+        } else {
+            toolsDiv.innerHTML = '<p class="hint">No tools available</p>';
+        }
+    } catch (error) {
+        console.error('Failed to load agent tools:', error);
+        const toolsDiv = document.getElementById('agentTools');
+        if (toolsDiv) {
+            toolsDiv.innerHTML = `<p style="color: var(--error);">Failed to load tools</p>`;
+        }
+    }
+}
+
+async function loadCalendarStatus() {
+    try {
+        const response = await fetch(`${API_BASE}/agent/calendar/status`);
+        const data = await response.json();
+
+        const statusDiv = document.getElementById('calendarStatus');
+        if (!statusDiv) return;
+
+        if (data.authenticated) {
+            statusDiv.innerHTML = `
+                <span class="status-indicator" style="background: var(--success);"></span>
+                <span style="color: var(--success);">Calendar connected</span>
+            `;
+        } else {
+            statusDiv.innerHTML = `
+                <span class="status-indicator" style="background: var(--warning);"></span>
+                <span style="color: var(--warning);">${escapeHtml(data.message)}</span>
+            `;
+        }
+    } catch (error) {
+        console.error('Failed to load calendar status:', error);
+        const statusDiv = document.getElementById('calendarStatus');
+        if (statusDiv) {
+            statusDiv.innerHTML = `
+                <span class="status-indicator" style="background: var(--error);"></span>
+                <span style="color: var(--error);">Status check failed</span>
+            `;
+        }
+    }
+}
+
+async function resetAgentChat() {
+    try {
+        await fetch(`${API_BASE}/agent/reset`, { method: 'POST' });
+
+        // Clear chat history and add welcome message
+        const history = document.getElementById('agentHistory');
+        if (history) {
+            history.innerHTML = `
+                <div class="agent-msg agent-msg-assistant" style="background: var(--bg-secondary); padding: 10px 15px; border-radius: 15px 15px 15px 5px; max-width: 80%; margin: 5px 0;">
+                    Hello! I can help you manage your calendar, search documents, and more. Try saying "What's on my calendar today?" or "Schedule a meeting at 2pm tomorrow".
+                </div>
+            `;
+        }
+    } catch (error) {
+        console.error('Failed to reset agent chat:', error);
+    }
+}
+
+// Load agent data when Agent tab is activated
+function loadAgentTab() {
+    loadAgentTools();
+    loadCalendarStatus();
+}
+
+// Hook into tab switching to load agent data
+const originalTabClick = document.querySelector('.tabs')?.addEventListener;
+document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', function() {
+        if (this.dataset.tab === 'agent') {
+            setTimeout(loadAgentTab, 100);
+        }
+    });
 });

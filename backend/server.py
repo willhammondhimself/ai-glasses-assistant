@@ -14,12 +14,14 @@ Main server that routes requests to specialized engines:
 
 import time
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from dotenv import load_dotenv
+
 
 # Load environment variables
 load_dotenv()
@@ -63,9 +65,16 @@ from backend.router import (
 
 # Import WebSocket manager and handlers
 from backend.websocket import ws_manager, MentalMathHandler
+from backend.websocket.hud_handler import hud_handler
 
 # Import meeting mode handler
 from backend.meeting import meeting_handler
+
+# Import voice status handler
+from backend.voice.status import voice_status, voice_status_handler
+
+# Import rate limiter middleware
+from backend.middleware import RateLimitMiddleware, rate_limiter
 
 # Import AR response models and formatters
 from backend.models import PaginatedResponse, ColorScheme, Slide
@@ -73,6 +82,14 @@ from backend.formatters import MathSlideBuilder, QuantSlideBuilder
 
 # Import dashboard API
 from backend.dashboard import dashboard_router
+
+# LiveKit token generation
+import os
+try:
+    from livekit import api as livekit_api
+    LIVEKIT_AVAILABLE = True
+except ImportError:
+    LIVEKIT_AVAILABLE = False
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -90,6 +107,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Rate limiting middleware
+app.add_middleware(RateLimitMiddleware)
+
 # Include dashboard router
 app.include_router(dashboard_router)
 
@@ -97,6 +117,31 @@ app.include_router(dashboard_router)
 FRONTEND_PATH = Path(__file__).parent.parent / "frontend" / "static"
 if FRONTEND_PATH.exists():
     app.mount("/static", StaticFiles(directory=str(FRONTEND_PATH)), name="static")
+
+
+# Serve dashboard at multiple URL patterns
+@app.get("/", response_class=HTMLResponse)
+async def root():
+    """Serve dashboard at root URL."""
+    frontend_path = Path(__file__).parent.parent / "frontend" / "dashboard.html"
+    if frontend_path.exists():
+        with open(frontend_path, "r", encoding="utf-8") as f:
+            return f.read()
+    return RedirectResponse(url="/docs")
+
+@app.get("/dashboard.html", response_class=HTMLResponse)
+async def dashboard_html():
+    """Serve dashboard as direct HTML file."""
+    frontend_path = Path(__file__).parent.parent / "frontend" / "dashboard.html"
+    if frontend_path.exists():
+        with open(frontend_path, "r", encoding="utf-8") as f:
+            return f.read()
+    return RedirectResponse(url="/dashboard/")
+
+@app.get("/favicon.ico")
+async def favicon():
+    """Handle favicon requests to prevent 404 errors."""
+    return Response(status_code=204)
 
 
 # ==================== Timing Middleware ====================
@@ -470,8 +515,208 @@ async def health_check():
                 "interview": "available"
             }
         },
-        "cache": cache.stats()
+        "cache": cache.stats(),
+        "voice": "available" if LIVEKIT_AVAILABLE else "not_installed",
+        "rate_limiting": rate_limiter.enabled
     }
+
+
+@app.get("/rate-limit/stats")
+async def rate_limit_stats():
+    """Get rate limiter statistics and configuration."""
+    return rate_limiter.get_stats()
+
+
+# ==================== LiveKit Voice Endpoints ====================
+
+class VoiceTokenRequest(BaseModel):
+    room_name: str = "wham-voice"
+    participant_name: str = "user"
+    voice: str = "Puck"  # Gemini voices: Puck, Charon, Kore, Fenrir, Aoede
+
+
+@app.post("/voice/token")
+async def get_voice_token(request: VoiceTokenRequest):
+    """
+    Generate a LiveKit room token for voice agent connection.
+
+    Requires LIVEKIT_API_KEY and LIVEKIT_API_SECRET environment variables.
+    """
+    if not LIVEKIT_AVAILABLE:
+        return {"error": "LiveKit SDK not installed. Run: pip install livekit-api"}
+
+    api_key = os.getenv("LIVEKIT_API_KEY")
+    api_secret = os.getenv("LIVEKIT_API_SECRET")
+
+    if not api_key or not api_secret:
+        return {
+            "error": "LiveKit credentials not configured",
+            "help": "Set LIVEKIT_API_KEY and LIVEKIT_API_SECRET environment variables"
+        }
+
+    # Create access token
+    token = livekit_api.AccessToken(api_key, api_secret)
+    token.with_identity(request.participant_name)
+    token.with_name(request.participant_name)
+    token.with_grants(livekit_api.VideoGrants(
+        room_join=True,
+        room=request.room_name,
+        can_publish=True,
+        can_subscribe=True,
+    ))
+
+    jwt_token = token.to_jwt()
+    livekit_url = os.getenv("LIVEKIT_URL", "wss://your-project.livekit.cloud")
+
+    # Dispatch agent to the room so it can handle voice interactions
+    try:
+        from livekit.api import CreateAgentDispatchRequest
+        lk_api = livekit_api.LiveKitAPI(
+            url=livekit_url.replace("wss://", "https://"),
+            api_key=api_key,
+            api_secret=api_secret,
+        )
+        # Request agent dispatch with voice metadata
+        dispatch_request = CreateAgentDispatchRequest(
+            room=request.room_name,
+            agent_name="",
+            metadata=f'{{"voice": "{request.voice}"}}',  # Pass voice to agent
+        )
+        await lk_api.agent_dispatch.create_dispatch(dispatch_request)
+        await lk_api.aclose()
+    except Exception as e:
+        # Log but don't fail - user can still connect, agent may already be dispatched
+        import logging
+        logging.warning(f"Agent dispatch failed (may already be dispatched): {e}")
+
+    return {
+        "token": jwt_token,
+        "url": livekit_url,
+        "room": request.room_name,
+        "participant": request.participant_name,
+        "voice": request.voice
+    }
+
+
+@app.get("/voice/status")
+async def voice_status_endpoint():
+    """Check voice agent availability and real-time status."""
+    return {
+        "livekit_sdk": "installed" if LIVEKIT_AVAILABLE else "not_installed",
+        "api_key_set": bool(os.getenv("LIVEKIT_API_KEY")),
+        "api_secret_set": bool(os.getenv("LIVEKIT_API_SECRET")),
+        "url": os.getenv("LIVEKIT_URL", "not_configured"),
+        "help": "Visit https://livekit.io/cloud to get credentials",
+        "agent_status": voice_status.get_status()
+    }
+
+
+@app.get("/voice/agent-status")
+async def voice_agent_status():
+    """Get detailed voice agent real-time status."""
+    return voice_status.get_status()
+
+
+@app.get("/voice/agent-history")
+async def voice_agent_history(limit: int = 50):
+    """Get voice agent state change history."""
+    return {"history": voice_status.get_history(limit)}
+
+
+@app.websocket("/ws/voice-status")
+async def voice_status_websocket(websocket: WebSocket):
+    """
+    WebSocket endpoint for real-time voice agent status updates.
+
+    Clients receive automatic broadcasts when voice agent state changes.
+
+    Protocol:
+    Client sends:
+    - {"type": "get_status"}   - Get current status
+    - {"type": "get_history", "limit": N}  - Get state history
+    - {"type": "ping"}         - Keep-alive
+
+    Server sends:
+    - {"type": "voice_status", "state": "listening|thinking|speaking|...", ...}
+    - {"type": "status", ...}  - Response to get_status
+    - {"type": "history", ...} - Response to get_history
+    - {"type": "pong"}         - Response to ping
+    """
+    await voice_status_handler.handle_connection(
+        websocket=websocket,
+        topic="voice:status",
+        metadata={"subscriber": True}
+    )
+
+
+# ==================== Voice Vision Endpoints ====================
+
+class VoiceVisionRequest(BaseModel):
+    image: str  # Base64-encoded image
+    context: Optional[str] = None  # Optional voice context
+    analyze_type: str = "general"  # general, text, objects, scene
+
+
+@app.post("/voice/vision")
+async def voice_vision_analyze(request: VoiceVisionRequest):
+    """
+    Analyze an image and return a voice-friendly description.
+
+    This endpoint is designed for injecting visual context into voice conversations.
+    The response is optimized for text-to-speech output.
+    """
+    from backend.voice.vision import analyze_for_voice
+
+    result = await analyze_for_voice(
+        image_base64=request.image,
+        context=request.context or "",
+        analyze_type=request.analyze_type
+    )
+
+    return {
+        "success": result.success,
+        "description": result.description,
+        "details": result.details
+    }
+
+
+@app.post("/voice/vision/auto")
+async def voice_vision_auto(request: VoiceVisionRequest):
+    """
+    Analyze image for auto-detection mode (glasses always-on recording).
+
+    Only returns a result if something noteworthy is detected.
+    Returns {"detected": false} for unremarkable scenes.
+    """
+    from backend.voice.vision import analyze_for_auto_detection
+
+    result = await analyze_for_auto_detection(request.image)
+
+    if result is None:
+        return {"detected": False, "description": None}
+
+    return {
+        "detected": True,
+        "description": result.description,
+        "details": result.details
+    }
+
+
+@app.get("/voice/tools")
+async def list_voice_tools():
+    """List available voice tools."""
+    from backend.voice.tools.router import get_router, register_default_tools
+
+    router = get_router()
+
+    # Register tools if not already done
+    if not router.tools:
+        try:
+            register_default_tools(router)
+        except Exception as e:
+            return {"tools": [], "error": str(e)}
+
+    return {"tools": router.list_tools()}
 
 
 # ==================== Math Endpoints ====================
@@ -1399,6 +1644,29 @@ async def meeting_websocket(websocket: WebSocket, session_id: str):
         topic=topic,
         metadata={"session_id": session_id}
     )
+
+
+@app.websocket("/ws/hud")
+async def hud_websocket(websocket: WebSocket):
+    """
+    WebSocket endpoint for HUD streaming to AR glasses.
+
+    Streams agent outputs, poker recommendations, and code debug results.
+
+    Protocol:
+    Client sends:
+    - {"type": "subscribe_mode", "mode": "poker|homework|code|all"}
+    - {"type": "agent_request", "message": "..."}
+    - {"type": "ping"}
+
+    Server sends:
+    - {"type": "subscribed", "mode": "...", "message": "..."}
+    - {"type": "agent_response", "data": {...}}
+    - {"type": "hud_update", "mode": "...", "data": {...}}
+    - {"type": "error", "message": "..."}
+    - {"type": "pong"}
+    """
+    await hud_handler.handle_connection(websocket, "hud:global")
 
 
 @app.get("/ws/status")

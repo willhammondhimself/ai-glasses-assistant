@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WHAM Voice Test</title>
+    <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Menlo', 'Monaco', 'Consolas', monospace;
+            background: #000;
+            color: #fff;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 40px 20px;
+        }
+
+        h1 {
+            color: #00FFFF;
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            color: rgba(255,255,255,0.6);
+            font-size: 14px;
+            margin-bottom: 40px;
+        }
+
+        .connection-panel {
+            background: rgba(0,255,255,0.05);
+            border: 1px solid #00FFFF;
+            border-radius: 8px;
+            padding: 20px;
+            width: 100%;
+            max-width: 500px;
+            margin-bottom: 30px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            color: rgba(255,255,255,0.8);
+            font-size: 12px;
+            margin-bottom: 5px;
+        }
+
+        input {
+            width: 100%;
+            padding: 10px;
+            background: #111;
+            border: 1px solid #333;
+            border-radius: 4px;
+            color: #fff;
+            font-family: inherit;
+            font-size: 14px;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: #00FFFF;
+        }
+
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #333;
+        }
+
+        .status-dot.connected {
+            background: #00FF80;
+            box-shadow: 0 0 10px #00FF80;
+        }
+
+        .status-dot.connecting {
+            background: #FFBF00;
+            animation: pulse 1s infinite;
+        }
+
+        .status-dot.error {
+            background: #FF4040;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .status-text {
+            font-size: 14px;
+        }
+
+        .button-row {
+            display: flex;
+            gap: 10px;
+        }
+
+        button {
+            flex: 1;
+            padding: 12px 20px;
+            font-family: inherit;
+            font-size: 14px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: #00FFFF;
+            color: #000;
+        }
+
+        .btn-primary:hover {
+            background: #00CCCC;
+        }
+
+        .btn-danger {
+            background: #FF4040;
+            color: #fff;
+        }
+
+        .btn-danger:hover {
+            background: #CC3333;
+        }
+
+        .btn-secondary {
+            background: #333;
+            color: #fff;
+        }
+
+        .btn-secondary:hover {
+            background: #444;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .mic-section {
+            text-align: center;
+            margin: 30px 0;
+        }
+
+        .mic-button {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            background: #111;
+            border: 3px solid #333;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin: 0 auto 20px;
+        }
+
+        .mic-button:hover {
+            border-color: #00FFFF;
+        }
+
+        .mic-button.active {
+            border-color: #00FF80;
+            background: rgba(0,255,128,0.1);
+            animation: glow 1.5s ease-in-out infinite;
+        }
+
+        .mic-button.muted {
+            border-color: #FF4040;
+        }
+
+        @keyframes glow {
+            0%, 100% { box-shadow: 0 0 20px rgba(0,255,128,0.3); }
+            50% { box-shadow: 0 0 40px rgba(0,255,128,0.5); }
+        }
+
+        .mic-icon {
+            font-size: 48px;
+        }
+
+        .mic-label {
+            color: rgba(255,255,255,0.6);
+            font-size: 14px;
+        }
+
+        .test-commands {
+            width: 100%;
+            max-width: 500px;
+        }
+
+        .test-commands h3 {
+            color: #00FFFF;
+            font-size: 14px;
+            margin-bottom: 15px;
+        }
+
+        .command-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+
+        .command-btn {
+            padding: 15px;
+            text-align: left;
+        }
+
+        .command-btn .cmd-title {
+            font-weight: bold;
+            margin-bottom: 4px;
+        }
+
+        .command-btn .cmd-example {
+            color: rgba(255,255,255,0.5);
+            font-size: 12px;
+        }
+
+        .transcript {
+            width: 100%;
+            max-width: 500px;
+            margin-top: 30px;
+        }
+
+        .transcript h3 {
+            color: #00FFFF;
+            font-size: 14px;
+            margin-bottom: 15px;
+        }
+
+        .transcript-box {
+            background: #111;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 15px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .transcript-entry {
+            margin-bottom: 10px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #222;
+        }
+
+        .transcript-entry:last-child {
+            margin-bottom: 0;
+            padding-bottom: 0;
+            border-bottom: none;
+        }
+
+        .transcript-entry .speaker {
+            font-size: 12px;
+            margin-bottom: 4px;
+        }
+
+        .transcript-entry .speaker.user {
+            color: #00FFFF;
+        }
+
+        .transcript-entry .speaker.wham {
+            color: #00FF80;
+        }
+
+        .transcript-entry .text {
+            color: rgba(255,255,255,0.9);
+        }
+
+        .audio-visualizer {
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            gap: 4px;
+            height: 40px;
+            margin-top: 20px;
+        }
+
+        .audio-bar {
+            width: 4px;
+            background: #00FFFF;
+            border-radius: 2px;
+            transition: height 0.1s;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+    <h1>WHAM Voice</h1>
+    <p class="subtitle">Real-time voice assistant powered by LiveKit + Gemini</p>
+
+    <!-- Connection Panel -->
+    <div class="connection-panel">
+        <div class="status">
+            <div class="status-dot" id="statusDot"></div>
+            <span class="status-text" id="statusText">Disconnected</span>
+        </div>
+
+        <div class="form-group">
+            <label>Voice</label>
+            <select id="voiceSelect" style="width: 100%; padding: 12px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; color: white; font-size: 16px;">
+                <option value="Puck">Puck (Male, Casual)</option>
+                <option value="Charon">Charon (Male, Deep)</option>
+                <option value="Kore">Kore (Female, Warm)</option>
+                <option value="Fenrir">Fenrir (Male, Energetic)</option>
+                <option value="Aoede">Aoede (Female, Melodic)</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>LiveKit URL</label>
+            <input type="text" id="livekitUrl" placeholder="wss://your-project.livekit.cloud" value="">
+        </div>
+
+        <div class="form-group">
+            <label>Room Token</label>
+            <input type="text" id="roomToken" placeholder="eyJ... (click Get Token to auto-fetch)">
+        </div>
+
+        <div class="button-row">
+            <button class="btn-secondary" id="getTokenBtn" onclick="getToken()">Get Token</button>
+            <button class="btn-primary" id="connectBtn" onclick="connect()">Connect</button>
+            <button class="btn-danger hidden" id="disconnectBtn" onclick="disconnect()">Disconnect</button>
+        </div>
+
+        <p id="tokenHelp" style="margin-top: 10px; color: rgba(255,255,255,0.5); font-size: 12px;">
+            Need credentials? <a href="https://livekit.io/cloud" target="_blank" style="color: #00FFFF;">livekit.io/cloud</a> |
+            <a href="/voice/status" target="_blank" style="color: #00FFFF;">Check status</a>
+        </p>
+    </div>
+
+    <!-- Microphone Section -->
+    <div class="mic-section hidden" id="micSection">
+        <div class="mic-button" id="micButton" onclick="toggleMic()">
+            <span class="mic-icon">🎤</span>
+        </div>
+        <p class="mic-label" id="micLabel">Click to unmute</p>
+
+        <div class="audio-visualizer" id="audioVisualizer">
+            <div class="audio-bar" style="height: 8px;"></div>
+            <div class="audio-bar" style="height: 12px;"></div>
+            <div class="audio-bar" style="height: 20px;"></div>
+            <div class="audio-bar" style="height: 16px;"></div>
+            <div class="audio-bar" style="height: 24px;"></div>
+            <div class="audio-bar" style="height: 18px;"></div>
+            <div class="audio-bar" style="height: 10px;"></div>
+        </div>
+    </div>
+
+    <!-- Test Commands -->
+    <div class="test-commands hidden" id="testCommands">
+        <h3>Test Commands (speak these)</h3>
+        <div class="command-grid">
+            <button class="btn-secondary command-btn" onclick="speakCommand('What are my pot odds with ace king on a king high flop?')">
+                <div class="cmd-title">Poker Odds</div>
+                <div class="cmd-example">"What are my pot odds..."</div>
+            </button>
+            <button class="btn-secondary command-btn" onclick="speakCommand('Schedule a meeting with Bob tomorrow at 2pm')">
+                <div class="cmd-title">Calendar</div>
+                <div class="cmd-example">"Schedule a meeting..."</div>
+            </button>
+            <button class="btn-secondary command-btn" onclick="speakCommand('What is 15 percent of 847?')">
+                <div class="cmd-title">Math</div>
+                <div class="cmd-example">"What is 15% of 847?"</div>
+            </button>
+            <button class="btn-secondary command-btn" onclick="speakCommand('Run a Python script that prints hello world')">
+                <div class="cmd-title">Code</div>
+                <div class="cmd-example">"Run a Python script..."</div>
+            </button>
+        </div>
+    </div>
+
+    <!-- Transcript -->
+    <div class="transcript hidden" id="transcriptSection">
+        <h3>Conversation</h3>
+        <div class="transcript-box" id="transcriptBox">
+            <!-- Entries added dynamically -->
+        </div>
+    </div>
+
+    <script>
+        // Check if LiveKit SDK loaded
+        if (typeof LivekitClient === 'undefined') {
+            console.error('LiveKit SDK failed to load from CDN');
+            document.body.innerHTML = '<div style="color:red;padding:40px;text-align:center;">' +
+                '<h2>LiveKit SDK Failed to Load</h2>' +
+                '<p>Check your internet connection or try refreshing the page.</p></div>';
+            throw new Error('LiveKit SDK not available');
+        }
+
+        // LiveKit client
+        const { Room, RoomEvent, Track, createLocalTracks } = LivekitClient;
+
+        let room = null;
+        let localAudioTrack = null;
+        let isMuted = true;
+
+        // DOM elements
+        const statusDot = document.getElementById('statusDot');
+        const statusText = document.getElementById('statusText');
+        const connectBtn = document.getElementById('connectBtn');
+        const disconnectBtn = document.getElementById('disconnectBtn');
+        const micSection = document.getElementById('micSection');
+        const micButton = document.getElementById('micButton');
+        const micLabel = document.getElementById('micLabel');
+        const testCommands = document.getElementById('testCommands');
+        const transcriptSection = document.getElementById('transcriptSection');
+        const transcriptBox = document.getElementById('transcriptBox');
+        const audioVisualizer = document.getElementById('audioVisualizer');
+
+        // Try to load saved settings
+        const savedUrl = localStorage.getItem('livekit_url');
+        const savedToken = localStorage.getItem('livekit_token');
+        const savedVoice = localStorage.getItem('wham_voice');
+        if (savedUrl) document.getElementById('livekitUrl').value = savedUrl;
+        if (savedToken) document.getElementById('roomToken').value = savedToken;
+        if (savedVoice) document.getElementById('voiceSelect').value = savedVoice;
+
+        // Fetch token from backend
+        async function getToken() {
+            setStatus('connecting', 'Fetching token...');
+
+            const selectedVoice = document.getElementById('voiceSelect').value;
+
+            try {
+                const response = await fetch('/voice/token', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        room_name: 'wham-voice',
+                        participant_name: 'user',
+                        voice: selectedVoice
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.error) {
+                    setStatus('error', data.error);
+                    alert(data.help || data.error);
+                    return;
+                }
+
+                // Fill in the fields
+                document.getElementById('livekitUrl').value = data.url;
+                document.getElementById('roomToken').value = data.token;
+
+                // Save for next time
+                localStorage.setItem('livekit_url', data.url);
+                localStorage.setItem('livekit_token', data.token);
+                localStorage.setItem('wham_voice', selectedVoice);
+
+                setStatus('disconnected', 'Token ready - click Connect');
+                addTranscript('system', `Token generated for room: ${data.room} (voice: ${selectedVoice})`);
+
+            } catch (error) {
+                console.error('Token fetch error:', error);
+                setStatus('error', 'Failed to fetch token');
+            }
+        }
+
+        async function connect() {
+            const url = document.getElementById('livekitUrl').value.trim();
+            const token = document.getElementById('roomToken').value.trim();
+
+            if (!url || !token) {
+                alert('Please enter LiveKit URL and token');
+                return;
+            }
+
+            // Save for next time
+            localStorage.setItem('livekit_url', url);
+            localStorage.setItem('livekit_token', token);
+
+            setStatus('connecting', 'Connecting...');
+
+            try {
+                room = new Room({
+                    adaptiveStream: true,
+                    dynacast: true,
+                });
+
+                // Set up event handlers
+                room.on(RoomEvent.Connected, onConnected);
+                room.on(RoomEvent.Disconnected, onDisconnected);
+                room.on(RoomEvent.TrackSubscribed, onTrackSubscribed);
+                room.on(RoomEvent.TrackUnsubscribed, onTrackUnsubscribed);
+                room.on(RoomEvent.DataReceived, onDataReceived);
+                room.on(RoomEvent.ParticipantConnected, (p) => {
+                    console.log('Participant joined:', p.identity);
+                    addTranscript('system', `${p.identity} joined`);
+                });
+
+                // Connect to room
+                await room.connect(url, token);
+
+                // Create and publish local audio track (muted initially)
+                const tracks = await createLocalTracks({ audio: true, video: false });
+                localAudioTrack = tracks.find(t => t.kind === Track.Kind.Audio);
+
+                if (localAudioTrack) {
+                    await room.localParticipant.publishTrack(localAudioTrack);
+                    await localAudioTrack.mute();
+                    isMuted = true;
+                    updateMicUI();
+                }
+
+            } catch (error) {
+                console.error('Connection error:', error);
+                setStatus('error', `Error: ${error.message}`);
+            }
+        }
+
+        async function disconnect() {
+            if (room) {
+                await room.disconnect();
+                room = null;
+            }
+        }
+
+        function onConnected() {
+            console.log('Connected to room:', room.name);
+            setStatus('connected', `Connected to ${room.name}`);
+
+            connectBtn.classList.add('hidden');
+            disconnectBtn.classList.remove('hidden');
+            micSection.classList.remove('hidden');
+            testCommands.classList.remove('hidden');
+            transcriptSection.classList.remove('hidden');
+
+            addTranscript('system', 'Connected to WHAM voice agent');
+        }
+
+        function onDisconnected() {
+            console.log('Disconnected from room');
+            setStatus('disconnected', 'Disconnected');
+
+            connectBtn.classList.remove('hidden');
+            disconnectBtn.classList.add('hidden');
+            micSection.classList.add('hidden');
+            testCommands.classList.add('hidden');
+
+            localAudioTrack = null;
+            room = null;
+        }
+
+        function onTrackSubscribed(track, publication, participant) {
+            console.log('Track subscribed:', track.kind, 'from', participant.identity);
+
+            if (track.kind === Track.Kind.Audio) {
+                // This is the agent's TTS audio - attach to DOM to play
+                const audioElement = track.attach();
+                audioElement.id = 'agent-audio';
+                document.body.appendChild(audioElement);
+                console.log('Agent audio attached');
+            }
+        }
+
+        function onTrackUnsubscribed(track) {
+            // Detach audio when agent stops
+            track.detach().forEach(el => el.remove());
+        }
+
+        function onDataReceived(data, participant) {
+            // Handle data messages (transcripts, etc.)
+            try {
+                const msg = JSON.parse(new TextDecoder().decode(data));
+                console.log('Data received:', msg);
+
+                if (msg.type === 'transcript') {
+                    addTranscript(msg.speaker, msg.text);
+                }
+            } catch (e) {
+                console.log('Raw data:', new TextDecoder().decode(data));
+            }
+        }
+
+        async function toggleMic() {
+            if (!localAudioTrack) return;
+
+            if (isMuted) {
+                await localAudioTrack.unmute();
+                isMuted = false;
+            } else {
+                await localAudioTrack.mute();
+                isMuted = true;
+            }
+
+            updateMicUI();
+        }
+
+        function updateMicUI() {
+            if (isMuted) {
+                micButton.classList.remove('active');
+                micButton.classList.add('muted');
+                micLabel.textContent = 'Click to unmute';
+            } else {
+                micButton.classList.add('active');
+                micButton.classList.remove('muted');
+                micLabel.textContent = 'Listening... (click to mute)';
+            }
+        }
+
+        function setStatus(state, text) {
+            statusDot.className = 'status-dot';
+            if (state === 'connected') statusDot.classList.add('connected');
+            else if (state === 'connecting') statusDot.classList.add('connecting');
+            else if (state === 'error') statusDot.classList.add('error');
+
+            statusText.textContent = text;
+        }
+
+        function addTranscript(speaker, text) {
+            const entry = document.createElement('div');
+            entry.className = 'transcript-entry';
+
+            const speakerDiv = document.createElement('div');
+            speakerDiv.className = `speaker ${speaker === 'user' ? 'user' : 'wham'}`;
+            speakerDiv.textContent = speaker === 'user' ? 'You' : speaker === 'system' ? 'System' : 'WHAM';
+
+            const textDiv = document.createElement('div');
+            textDiv.className = 'text';
+            textDiv.textContent = text;
+
+            entry.appendChild(speakerDiv);
+            entry.appendChild(textDiv);
+            transcriptBox.appendChild(entry);
+
+            // Scroll to bottom
+            transcriptBox.scrollTop = transcriptBox.scrollHeight;
+        }
+
+        function speakCommand(text) {
+            // This just shows what you should say - can't synthesize speech programmatically
+            addTranscript('system', `Try saying: "${text}"`);
+        }
+
+        // Audio visualizer animation (simplified)
+        let animationId = null;
+        function animateVisualizer() {
+            const bars = audioVisualizer.querySelectorAll('.audio-bar');
+            bars.forEach(bar => {
+                const height = Math.random() * 30 + 5;
+                bar.style.height = `${height}px`;
+            });
+            animationId = requestAnimationFrame(animateVisualizer);
+        }
+
+        // Start visualizer when not muted
+        setInterval(() => {
+            if (!isMuted && !animationId) {
+                animateVisualizer();
+            } else if (isMuted && animationId) {
+                cancelAnimationFrame(animationId);
+                animationId = null;
+            }
+        }, 100);
+    </script>
+</body>
+</html>

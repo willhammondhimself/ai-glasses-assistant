@@ -632,7 +632,7 @@ Be concise but comprehensive."""
             matches = re.finditer(step_pattern, content, re.IGNORECASE | re.DOTALL)
 
             for match in matches:
-                step_text = match.group(2).strip()
+                step_text = (match.group(2) or "").strip()
 
                 # Split into expression and explanation if possible
                 expression = step_text[:200]
@@ -643,8 +643,8 @@ Be concise but comprehensive."""
                 if any(word in step_text.lower() for word in ['because', 'since', 'by', 'using']):
                     parts = re.split(r'\b(?:because|since|by|using)\b', step_text, 1, re.IGNORECASE)
                     if len(parts) == 2:
-                        expression = parts[0].strip()[:200]
-                        explanation = parts[1].strip()[:200]
+                        expression = (parts[0] or "").strip()[:200]
+                        explanation = (parts[1] or "").strip()[:200]
                 else:
                     explanation = step_text[:200]
 
@@ -763,7 +763,7 @@ Be concise but comprehensive."""
         """Extract a section from content using regex pattern."""
         flags = re.IGNORECASE | (re.DOTALL if multiline else 0)
         match = re.search(f"{pattern}[:\\s]*(.+?)(?=\\n\\n|\\n[A-Z]+:|$)", content, flags)
-        return match.group(1).strip() if match else ""
+        return (match.group(1) or "").strip() if match else ""
 
     def _extract_list_items(self, content: str, section_pattern: str) -> List[str]:
         """Extract bulleted/numbered list items from a section."""
@@ -773,7 +773,7 @@ Be concise but comprehensive."""
 
         # Match bullet points, numbered lists, or dashes
         items = re.findall(r'(?:^|\n)\s*(?:[•\-*]|\d+[.)])\s*(.+)', section, re.MULTILINE)
-        return [item.strip() for item in items if len(item.strip()) > 5][:10]  # Max 10 items
+        return [item.strip() for item in items if item and len(item.strip()) > 5][:10]  # Max 10 items
 
     def _extract_importance(self, content: str) -> str:
         """Extract overall importance statement."""

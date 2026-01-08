@@ -1,0 +1,50 @@
+{
+  "daily": [
+    {
+      "id": "d3828177",
+      "title": "Meeting Pro",
+      "description": "Use meeting mode 3 times",
+      "category": "productivity",
+      "difficulty": 1,
+      "xp_reward": 35,
+      "target": 3,
+      "progress": 0,
+      "created_at": "2026-01-07T00:00:43.316031",
+      "completed_at": null,
+      "expires_at": "2026-01-07T23:59:59.316022",
+      "bonus_conditions": {},
+      "metadata": {}
+    },
+    {
+      "id": "777b9395",
+      "title": "Deep Focus",
+      "description": "Complete 4 Pomodoro sessions",
+      "category": "focus",
+      "difficulty": 1,
+      "xp_reward": 30,
+      "target": 4,
+      "progress": 0,
+      "created_at": "2026-01-07T00:00:43.316053",
+      "completed_at": null,
+      "expires_at": "2026-01-07T23:59:59.316049",
+      "bonus_conditions": {},
+      "metadata": {}
+    },
+    {
+      "id": "2587b599",
+      "title": "Study Session",
+      "description": "Use homework help 4 times",
+      "category": "learning",
+      "difficulty": 1,
+      "xp_reward": 30,
+      "target": 4,
+      "progress": 0,
+      "created_at": "2026-01-07T00:00:43.316068",
+      "completed_at": null,
+      "expires_at": "2026-01-07T23:59:59.316065",
+      "bonus_conditions": {},
+      "metadata": {}
+    }
+  ],
+  "generated_at": "2026-01-07T00:00:43.315940"
+}

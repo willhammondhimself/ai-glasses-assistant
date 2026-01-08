@@ -49,6 +49,9 @@ class WHAMColors:
 # Default instance
 COLORS = WHAMColors()
 
+# Alias for backward compatibility
+Colors = WHAMColors
+
 
 def rgb_to_hex(color: RGB) -> str:
     """Convert RGB tuple to hex string."""

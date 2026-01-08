@@ -67,3 +67,6 @@ coverage.xml
 
 # Claude Code
 .claude/
+
+# Dev tracking
+TODO.md

@@ -6,8 +6,9 @@ Supports multiple topics/channels for different modes (mental math, etc.)
 """
 
 import asyncio
+import json
 import logging
-from typing import Dict, Set, Optional, Callable, Any
+from typing import Dict, Set, List, Optional, Callable, Any
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -37,8 +38,8 @@ class ConnectionManager:
     """
 
     def __init__(self):
-        # topic -> set of ConnectionInfo
-        self._connections: Dict[str, Set[ConnectionInfo]] = {}
+        # topic -> list of ConnectionInfo
+        self._connections: Dict[str, List[ConnectionInfo]] = {}
         # websocket -> (topic, ConnectionInfo) for reverse lookup
         self._websocket_map: Dict[WebSocket, tuple[str, ConnectionInfo]] = {}
         # Lock for thread-safe operations
@@ -70,8 +71,8 @@ class ConnectionManager:
 
         async with self._lock:
             if topic not in self._connections:
-                self._connections[topic] = set()
-            self._connections[topic].add(conn_info)
+                self._connections[topic] = []
+            self._connections[topic].append(conn_info)
             self._websocket_map[websocket] = (topic, conn_info)
 
         logger.info(f"WebSocket connected to topic: {topic}")
@@ -94,7 +95,8 @@ class ConnectionManager:
             topic, conn_info = self._websocket_map[websocket]
 
             if topic in self._connections:
-                self._connections[topic].discard(conn_info)
+                if conn_info in self._connections[topic]:
+                    self._connections[topic].remove(conn_info)
                 # Clean up empty topics
                 if not self._connections[topic]:
                     del self._connections[topic]
@@ -248,7 +250,7 @@ class WebSocketHandler:
         metadata: Optional[Dict[str, Any]] = None
     ):
         """
-        Handle a WebSocket connection lifecycle.
+        Handle a WebSocket connection lifecycle with keep-alive.
 
         Args:
             websocket: The WebSocket connection
@@ -256,6 +258,20 @@ class WebSocketHandler:
             metadata: Optional connection metadata
         """
         conn_info = await self.manager.connect(websocket, topic, metadata)
+        heartbeat_task = None
+
+        async def send_heartbeat():
+            """Send periodic pings to keep connection alive."""
+            try:
+                while True:
+                    await asyncio.sleep(30)  # Ping every 30s
+                    try:
+                        await websocket.send_json({"type": "ping", "timestamp": datetime.utcnow().isoformat()})
+                    except Exception as e:
+                        logger.error(f"Heartbeat failed: {e}")
+                        break
+            except asyncio.CancelledError:
+                pass
 
         try:
             # Send welcome message
@@ -265,23 +281,57 @@ class WebSocketHandler:
                 "timestamp": datetime.utcnow().isoformat()
             })
 
-            # Message loop
+            # Start heartbeat task
+            heartbeat_task = asyncio.create_task(send_heartbeat())
+
+            # Message loop with timeout
             while True:
-                data = await websocket.receive_json()
-                await self.handle_message(websocket, topic, data, conn_info)
+                try:
+                    # Wait max 45s for message (longer than heartbeat interval)
+                    data = await asyncio.wait_for(
+                        websocket.receive_json(),
+                        timeout=45.0
+                    )
+                    await self.handle_message(websocket, topic, data, conn_info)
+
+                except asyncio.TimeoutError:
+                    # No message in 45s - connection is idle but alive
+                    # Heartbeat task keeps it alive, just continue
+                    continue
+
+                except json.JSONDecodeError as e:
+                    # Malformed JSON - log and send error, but keep connection
+                    logger.warning(f"Invalid JSON from client: {e}")
+                    await websocket.send_json({
+                        "type": "error",
+                        "message": "Invalid JSON format"
+                    })
+                    continue
 
         except WebSocketDisconnect:
             logger.info(f"Client disconnected from {topic}")
+
         except Exception as e:
-            logger.error(f"WebSocket error: {e}")
+            logger.error(f"WebSocket error: {e}", exc_info=True)
             try:
-                await websocket.send_json({
-                    "type": "error",
-                    "message": str(e)
-                })
+                if websocket.client_state.name == "CONNECTED":
+                    await websocket.send_json({
+                        "type": "error",
+                        "message": str(e)
+                    })
             except Exception:
-                pass
+                logger.error("Failed to send error message to client")
+
         finally:
+            # Cancel heartbeat task
+            if heartbeat_task and not heartbeat_task.done():
+                heartbeat_task.cancel()
+                try:
+                    await heartbeat_task
+                except asyncio.CancelledError:
+                    pass
+
+            # Disconnect from manager
             await self.manager.disconnect(websocket)
             await self.on_disconnect(websocket, topic, conn_info)
 

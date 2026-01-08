@@ -344,11 +344,14 @@ class PatternAnalyzer:
         """Compute poker skill from mistake rate and profit trend."""
         total_hands = sum(s['poker']['count'] for s in sessions)
 
-        # Extract mistakes from details
-        total_mistakes = sum(
-            sum(s.get('poker', {}).get('details', {}).get('mistakes', {}).values())
-            for s in sessions
-        )
+        # Extract mistakes from details (handle both dict and int formats)
+        total_mistakes = 0
+        for s in sessions:
+            mistakes = s.get('poker', {}).get('details', {}).get('mistakes', {})
+            if isinstance(mistakes, dict):
+                total_mistakes += sum(mistakes.values())
+            elif isinstance(mistakes, (int, float)):
+                total_mistakes += mistakes
 
         mistake_rate = total_mistakes / total_hands if total_hands > 0 else 0
 

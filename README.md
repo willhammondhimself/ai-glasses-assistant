@@ -1,4 +1,4 @@
-# AI Glasses Assistant - WHAM
+# AI Glasses Assistant - W.H.A.M.
 
 My personal AR glasses project for the Brilliant Labs Halo.
 

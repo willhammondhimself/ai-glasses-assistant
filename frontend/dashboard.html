@@ -61,6 +61,7 @@
             <button class="tab" data-tab="academic">Academic</button>
             <button class="tab" data-tab="homework">Homework</button>
             <button class="tab" data-tab="poker-lab">Poker Lab</button>
+            <button class="tab" data-tab="agent">Agent</button>
         </nav>
 
         <!-- Tab: Today -->
@@ -263,6 +264,34 @@
                         </div>
                         <button type="submit" class="action-btn">Store Memory</button>
                     </form>
+                </div>
+
+                <!-- Document Q&A (RAG) -->
+                <div class="card span-2">
+                    <h2 class="card-title">Document Q&A</h2>
+                    <div class="grid-2" style="gap: 20px;">
+                        <!-- Upload Section -->
+                        <div>
+                            <div class="upload-zone" onclick="document.getElementById('ragFile').click()" style="padding: 30px; text-align: center; border: 2px dashed var(--border); border-radius: 8px; cursor: pointer;">
+                                <input type="file" id="ragFile" accept=".txt,.pdf" hidden onchange="uploadRAGDoc()">
+                                <div style="font-size: 2em;">📄</div>
+                                <p>Upload PDF or TXT</p>
+                                <p class="hint">Max 10MB per file</p>
+                            </div>
+                            <div id="ragStatus" style="margin-top: 10px; text-align: center;"></div>
+                            <div id="ragDocCount" style="margin-top: 10px; text-align: center; color: var(--text-dim);"></div>
+                        </div>
+                        <!-- Query Section -->
+                        <div>
+                            <div class="query-box">
+                                <input type="text" id="ragQuery" placeholder="Ask about your documents..." class="query-input" onkeypress="if(event.key==='Enter')queryRAG()">
+                                <button onclick="queryRAG()" class="query-btn">Ask</button>
+                            </div>
+                            <div id="ragAnswer" style="margin-top: 15px;">
+                                <p class="hint">Upload documents then ask questions about them</p>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </section>
@@ -561,6 +590,56 @@
                             <button onclick="analyzeLeaks()">Find Leaks</button>
                             <div id="leakReport"></div>
                         </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tab: Agent (Phase 9) -->
+        <section class="tab-content" id="tab-agent">
+            <div class="grid-2">
+                <!-- Left: Chat -->
+                <div class="card">
+                    <h2 class="card-title">🤖 WHAM Agent</h2>
+                    <p class="hint">Natural language commands with tool execution</p>
+
+                    <div class="agent-chat" id="agentChat">
+                        <div class="agent-history" id="agentHistory">
+                            <div class="agent-msg agent-msg-assistant">
+                                Hello! I can help you manage your calendar, search documents, and more. Try saying "What's on my calendar today?" or "Schedule a meeting at 2pm tomorrow".
+                            </div>
+                        </div>
+
+                        <div class="agent-input-row">
+                            <input type="text" id="agentInput"
+                                   placeholder="e.g., 'Clear my afternoon' or 'Schedule poker study 2pm tomorrow'"
+                                   class="query-input"
+                                   onkeypress="if(event.key==='Enter')sendAgentMessage()">
+                            <button onclick="sendAgentMessage()" class="query-btn">Send</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: Tools & Status -->
+                <div class="stack">
+                    <!-- Available Tools -->
+                    <div class="card">
+                        <h2 class="card-title">Available Tools</h2>
+                        <div id="agentTools" class="tool-list">
+                            <div class="loading">Loading tools...</div>
+                        </div>
+                    </div>
+
+                    <!-- Calendar Status -->
+                    <div class="card">
+                        <h2 class="card-title">Calendar Status</h2>
+                        <div id="calendarStatus" class="status-box">
+                            <span class="status-indicator"></span>
+                            <span>Checking...</span>
+                        </div>
+                        <button onclick="resetAgentChat()" class="action-btn secondary" style="margin-top: 15px;">
+                            🔄 Reset Conversation
+                        </button>
                     </div>
                 </div>
             </div>

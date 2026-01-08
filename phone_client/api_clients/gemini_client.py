@@ -3,24 +3,28 @@ Gemini Flash Client for OCR and Vision.
 Primary use: Extract poker cards from camera images.
 Latency: ~1 second
 Cost: $0.002 per request
+
+Uses the new google-genai SDK (unified SDK).
 """
 import os
 import json
 import asyncio
 import logging
 import re
+import base64
 from typing import Optional, Dict, Any
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
-# Optional import - graceful fallback if not installed
+# New unified SDK import
 try:
-    import google.generativeai as genai
+    from google import genai
+    from google.genai import types
     GENAI_AVAILABLE = True
 except ImportError:
     GENAI_AVAILABLE = False
-    logger.warning("google-generativeai not installed. Run: pip install google-generativeai")
+    logger.warning("google-genai not installed. Run: pip install google-genai")
 
 
 @dataclass
@@ -100,11 +104,12 @@ If pot/bet sizes aren't visible, estimate or use 0."""
             api_key: Gemini API key. Falls back to GEMINI_API_KEY env var.
         """
         self.api_key = api_key or os.getenv("GEMINI_API_KEY")
-        self.model = None
+        self.client = None
         self._initialized = False
+        self._model = "gemini-2.0-flash"
 
         if not GENAI_AVAILABLE:
-            logger.error("google-generativeai not available")
+            logger.error("google-genai not available")
             return
 
         if not self.api_key:
@@ -112,17 +117,16 @@ If pot/bet sizes aren't visible, estimate or use 0."""
             return
 
         try:
-            genai.configure(api_key=self.api_key)
-            self.model = genai.GenerativeModel("gemini-2.0-flash-exp")
+            self.client = genai.Client(api_key=self.api_key)
             self._initialized = True
-            logger.info("Gemini client initialized")
+            logger.info("Gemini client initialized with new SDK")
         except Exception as e:
             logger.error(f"Failed to initialize Gemini: {e}")
 
     @property
     def is_available(self) -> bool:
         """Check if client is ready to use."""
-        return self._initialized and self.model is not None
+        return self._initialized and self.client is not None
 
     async def extract_cards(self, image_data: bytes) -> CardExtraction:
         """
@@ -145,16 +149,17 @@ If pot/bet sizes aren't visible, estimate or use 0."""
             )
 
         try:
-            # Create image part for Gemini
-            image_part = {
-                "mime_type": "image/jpeg",
-                "data": image_data
-            }
+            # Create image part for new SDK
+            image_part = types.Part.from_bytes(
+                data=image_data,
+                mime_type="image/jpeg"
+            )
 
             # Generate content with image and prompt
             response = await asyncio.to_thread(
-                self.model.generate_content,
-                [self.CARD_EXTRACTION_PROMPT, image_part]
+                self.client.models.generate_content,
+                model=self._model,
+                contents=[self.CARD_EXTRACTION_PROMPT, image_part]
             )
 
             raw_text = response.text
@@ -215,14 +220,15 @@ If pot/bet sizes aren't visible, estimate or use 0."""
             return "Gemini client not available"
 
         try:
-            image_part = {
-                "mime_type": "image/jpeg",
-                "data": image_data
-            }
+            image_part = types.Part.from_bytes(
+                data=image_data,
+                mime_type="image/jpeg"
+            )
 
             response = await asyncio.to_thread(
-                self.model.generate_content,
-                [prompt, image_part]
+                self.client.models.generate_content,
+                model=self._model,
+                contents=[prompt, image_part]
             )
 
             return response.text
@@ -246,8 +252,9 @@ If pot/bet sizes aren't visible, estimate or use 0."""
 
         try:
             response = await asyncio.to_thread(
-                self.model.generate_content,
-                prompt
+                self.client.models.generate_content,
+                model=self._model,
+                contents=prompt
             )
             return response.text
 
@@ -286,14 +293,15 @@ RESPOND IN JSON ONLY:
  "variables": ["x"], "confidence": 0.95}"""
 
         try:
-            image_part = {
-                "mime_type": "image/jpeg",
-                "data": image_data
-            }
+            image_part = types.Part.from_bytes(
+                data=image_data,
+                mime_type="image/jpeg"
+            )
 
             response = await asyncio.to_thread(
-                self.model.generate_content,
-                [prompt, image_part]
+                self.client.models.generate_content,
+                model=self._model,
+                contents=[prompt, image_part]
             )
 
             raw_text = response.text
@@ -366,14 +374,15 @@ RESPOND IN JSON ONLY:
  "language": "python", "error_visible": false, "confidence": 0.95}"""
 
         try:
-            image_part = {
-                "mime_type": "image/jpeg",
-                "data": image_data
-            }
+            image_part = types.Part.from_bytes(
+                data=image_data,
+                mime_type="image/jpeg"
+            )
 
             response = await asyncio.to_thread(
-                self.model.generate_content,
-                [prompt, image_part]
+                self.client.models.generate_content,
+                model=self._model,
+                contents=[prompt, image_part]
             )
 
             raw_text = response.text
@@ -419,7 +428,7 @@ RESPOND IN JSON ONLY:
 # Test
 async def test_gemini():
     """Test Gemini client."""
-    print("=== Gemini Client Test ===\n")
+    print("=== Gemini Client Test (New SDK) ===\n")
 
     client = GeminiClient()
 
