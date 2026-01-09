@@ -11,8 +11,7 @@ logger = logging.getLogger(__name__)
 class QuizState(Enum):
     """Quiz session states."""
     IDLE = "idle"
-    QUESTIONING = "questioning"  # Card front shown, waiting for user to answer
-    WAITING_RATING = "waiting_rating"  # User answered, waiting for correct/wrong
+    QUESTIONING = "questioning"  # Card front shown, waiting for user answer
 
 
 class LearningVoiceTool(VoiceTool):
@@ -21,9 +20,9 @@ class LearningVoiceTool(VoiceTool):
     Supports stateful quiz sessions where:
     1. User says "Quiz me" to start
     2. System reads question (front of card)
-    3. User thinks/says answer
-    4. User rates themselves: "I got it" or "Wrong"
-    5. System confirms, shows answer, schedules next review
+    3. User says their answer verbally
+    4. System evaluates answer using Gemini: "Correct!" or "Wrong, the answer was X"
+    5. System schedules next review based on evaluation
     6. Continues until "Done studying" or no more cards
     """
 
@@ -38,10 +37,9 @@ class LearningVoiceTool(VoiceTool):
         r"\badd\s+(to\s+)?flashcards?\b",
         r"\b(how\s+)?many\s+cards?\s+(due|to\s+review)\b",
         r"\bspaced\s+repetition\b",
-        r"\b(i\s+)?(got\s+it|knew\s+it|correct|right)\b",
-        r"\b(i\s+)?(didn'?t\s+know|wrong|incorrect|missed)\b",
         r"\b(done|stop|finish)\s*(studying|review|quiz)?\b",
         r"\bnext\s+card\b",
+        r"\bskip\s*(this)?\s*(card)?\b",
         r"\bshow\s+(the\s+)?answer\b",
     ]
 
@@ -49,8 +47,16 @@ class LearningVoiceTool(VoiceTool):
 
     def __init__(self):
         self._learning_service = None
+        self._answer_evaluator = None
         self._state = QuizState.IDLE
         self._current_tags: Optional[List[str]] = None
+
+    def _get_evaluator(self):
+        """Get answer evaluator (lazy load)."""
+        if self._answer_evaluator is None:
+            from backend.services.answer_evaluator import get_answer_evaluator
+            self._answer_evaluator = get_answer_evaluator()
+        return self._answer_evaluator
 
     def _get_service(self):
         """Get learning service (lazy load)."""
@@ -73,19 +79,18 @@ class LearningVoiceTool(VoiceTool):
         service = self._get_service()
 
         try:
-            # Check for rating responses first (highest priority when in quiz)
-            if self._state in (QuizState.QUESTIONING, QuizState.WAITING_RATING):
-                if self._is_correct_rating(query_lower):
-                    return await self._handle_rating(service, correct=True)
-                elif self._is_incorrect_rating(query_lower):
-                    return await self._handle_rating(service, correct=False)
-                elif self._is_show_answer(query_lower):
+            # When in quiz mode, check for commands first
+            if self._state == QuizState.QUESTIONING:
+                # Check for control commands
+                if self._is_show_answer(query_lower):
                     return await self._handle_show_answer(service)
                 elif self._is_done_studying(query_lower):
                     return await self._handle_done_studying(service)
                 elif self._is_next_card(query_lower):
-                    # Skip current and get next
                     return await self._handle_next_card(service)
+                else:
+                    # Treat user's speech as their answer and evaluate it
+                    return await self._handle_answer_evaluation(service, query)
 
             # Start quiz / get next card
             if self._is_quiz_request(query_lower):
@@ -121,20 +126,6 @@ class LearningVoiceTool(VoiceTool):
 
     def _is_quiz_request(self, query: str) -> bool:
         patterns = ["quiz me", "quiz", "review", "study", "practice", "next card"]
-        return any(p in query for p in patterns)
-
-    def _is_correct_rating(self, query: str) -> bool:
-        patterns = [
-            "got it", "knew it", "correct", "right", "yes",
-            "i know", "easy", "good", "nailed it"
-        ]
-        return any(p in query for p in patterns)
-
-    def _is_incorrect_rating(self, query: str) -> bool:
-        patterns = [
-            "wrong", "incorrect", "missed", "didn't know",
-            "no", "forgot", "hard", "don't know"
-        ]
         return any(p in query for p in patterns)
 
     def _is_show_answer(self, query: str) -> bool:
@@ -225,36 +216,47 @@ class LearningVoiceTool(VoiceTool):
             }
         )
 
-    async def _handle_rating(self, service, correct: bool) -> VoiceToolResult:
-        """Handle user's self-rating of their answer."""
+    async def _handle_answer_evaluation(self, service, user_answer: str) -> VoiceToolResult:
+        """Evaluate user's answer using Gemini and provide feedback."""
         current = service.get_current_card()
 
         if not current:
             self._state = QuizState.IDLE
             return VoiceToolResult(
                 success=False,
-                message="No card to rate. Say 'quiz me' to start.",
+                message="No card to evaluate. Say 'quiz me' to start.",
                 data={"error": "no_current_card"}
             )
 
-        # Submit the rating
-        result = await service.rate_current_card(correct)
+        # Get the correct answer
+        correct_answer = current.back
+        question = current.front
 
-        if "error" in result:
-            return VoiceToolResult(
-                success=False,
-                message=result.get("voice_message", "Error rating card."),
-                data=result
-            )
+        # Evaluate using Gemini
+        evaluator = self._get_evaluator()
+        evaluation = await evaluator.evaluate(
+            user_answer=user_answer,
+            correct_answer=correct_answer,
+            question=question
+        )
 
-        # Build response with answer
-        answer = current.to_voice_answer()
-        voice_message = result.get("voice_message", "")
+        # Submit the quality score to the learning service
+        quality = evaluation.get("quality", 1)
+        result = await service.review_card(current.id, quality)
 
-        if correct:
-            message = f"{voice_message} The answer was: {answer}"
+        # Track session stats
+        if evaluation["correct"]:
+            service._session_correct += 1
+        service._session_reviewed += 1
+
+        # Build response
+        feedback = evaluation.get("feedback", "")
+        correct_answer_voice = current.to_voice_answer()
+
+        if evaluation["correct"]:
+            message = feedback
         else:
-            message = f"The answer is: {answer}. {voice_message}"
+            message = f"{feedback}"
 
         # Try to get next card
         next_card = await service.get_next_card(tags=self._current_tags)
@@ -265,6 +267,7 @@ class LearningVoiceTool(VoiceTool):
             data = {
                 "state": "questioning",
                 "card": next_card.to_dict(),
+                "evaluation": evaluation,
                 "previous_result": result
             }
         else:
@@ -276,7 +279,8 @@ class LearningVoiceTool(VoiceTool):
             data = {
                 "state": "idle",
                 "session_complete": True,
-                "session_stats": session
+                "session_stats": session,
+                "evaluation": evaluation
             }
             service.reset_session()
 
@@ -287,7 +291,7 @@ class LearningVoiceTool(VoiceTool):
         )
 
     async def _handle_show_answer(self, service) -> VoiceToolResult:
-        """Show the answer without rating."""
+        """Show the answer and mark as reviewed (quality 1 = shown answer)."""
         current = service.get_current_card()
 
         if not current:
@@ -297,16 +301,38 @@ class LearningVoiceTool(VoiceTool):
                 data={"error": "no_current_card"}
             )
 
-        self._state = QuizState.WAITING_RATING
         answer = current.to_voice_answer()
+
+        # Mark as reviewed with low quality (needed help)
+        await service.review_card(current.id, quality=1)
+        service._session_reviewed += 1
+
+        # Get next card
+        next_card = await service.get_next_card(tags=self._current_tags)
+
+        if next_card:
+            self._state = QuizState.QUESTIONING
+            message = f"The answer is: {answer}. Next card: {next_card.to_voice_question()}"
+            data = {
+                "state": "questioning",
+                "card": next_card.to_dict(),
+                "shown_answer": answer
+            }
+        else:
+            self._state = QuizState.IDLE
+            session = service.get_session_stats()
+            message = f"The answer is: {answer}. That's all for now! You reviewed {session['reviewed']} cards."
+            data = {
+                "state": "idle",
+                "shown_answer": answer,
+                "session_stats": session
+            }
+            service.reset_session()
 
         return VoiceToolResult(
             success=True,
-            message=f"The answer is: {answer}. Did you get it right?",
-            data={
-                "state": "waiting_rating",
-                "answer": answer
-            }
+            message=message,
+            data=data
         )
 
     async def _handle_next_card(self, service) -> VoiceToolResult:

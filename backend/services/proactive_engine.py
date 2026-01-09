@@ -184,6 +184,7 @@ class ProactiveEngine:
             (AlertType.LEARNING_REMINDER, self._check_learning),
             (AlertType.GOAL_PROGRESS, self._check_fitness_goals),
             (AlertType.FOCUS_BREAK, self._check_focus_breaks),
+            (AlertType.CUSTOM, self._check_timers),  # Timer/reminder notifications
         ]
 
         for alert_type, check_func in checks:
@@ -448,6 +449,39 @@ class ProactiveEngine:
                     ))
         except Exception as e:
             logger.debug(f"Focus break check error: {e}")
+        return alerts
+
+    async def _check_timers(self) -> List[Alert]:
+        """Check for expired timers and reminders."""
+        alerts = []
+        try:
+            from backend.voice.tools.reminders import RemindersTool
+            tool = RemindersTool()
+            expired = await tool.get_expired_reminders()
+
+            for reminder in expired:
+                alert_type = AlertType.CUSTOM
+                title = "Timer Done" if reminder["is_timer"] else "Reminder"
+                urgency = "important"  # Timers should be delivered promptly
+
+                alerts.append(Alert(
+                    id=str(uuid.uuid4()),
+                    type=alert_type,
+                    title=title,
+                    message=reminder["message"],
+                    urgency=urgency,
+                    expires_at=datetime.now() + timedelta(hours=1),
+                    data={"reminder_id": reminder["id"], "is_timer": reminder["is_timer"]}
+                ))
+
+                # Mark as completed so we don't deliver again
+                await tool.mark_completed(reminder["id"])
+
+            if expired:
+                logger.info(f"Found {len(expired)} expired timer/reminders")
+
+        except Exception as e:
+            logger.debug(f"Timer check error: {e}")
         return alerts
 
     # Public API

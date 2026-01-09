@@ -310,3 +310,56 @@ class RemindersTool(VoiceTool):
             if mins:
                 return f"in {hours} hour{'s' if hours != 1 else ''} and {mins} minutes"
             return f"in {hours} hour{'s' if hours != 1 else ''}"
+
+    async def get_expired_reminders(self) -> List[Dict[str, Any]]:
+        """Get all expired reminders/timers that haven't been delivered.
+
+        Returns:
+            List of expired reminder dicts with id, message, is_timer, due_at
+        """
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+
+        # Find reminders that are past due and not completed
+        cursor.execute(
+            "SELECT id, message, due_at, is_timer FROM reminders WHERE completed = FALSE AND due_at <= ?",
+            (datetime.now().isoformat(),)
+        )
+        rows = cursor.fetchall()
+        conn.close()
+
+        expired = []
+        for row in rows:
+            id_, message, due_at_str, is_timer = row
+            expired.append({
+                "id": id_,
+                "message": message,
+                "due_at": due_at_str,
+                "is_timer": bool(is_timer)
+            })
+
+        return expired
+
+    async def mark_completed(self, reminder_id: int) -> bool:
+        """Mark a reminder as completed/delivered.
+
+        Args:
+            reminder_id: The ID of the reminder to mark complete
+
+        Returns:
+            True if successful
+        """
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE reminders SET completed = TRUE WHERE id = ?",
+            (reminder_id,)
+        )
+        success = cursor.rowcount > 0
+        conn.commit()
+        conn.close()
+
+        if success:
+            logger.info(f"Marked reminder {reminder_id} as completed")
+
+        return success

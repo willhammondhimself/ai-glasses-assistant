@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% set active = 'home' %}
+
+{% block title %}WHAM Dashboard{% endblock %}
+
+{% block content %}
+<h1>Dashboard</h1>
+
+<div class="grid grid-4">
+    <div class="card">
+        <div class="stat-value">{{ learning_stats.get('due_today', 0) }}</div>
+        <div class="stat-label">Cards Due Today</div>
+    </div>
+    <div class="card">
+        <div class="stat-value">{{ learning_stats.get('total_cards', 0) }}</div>
+        <div class="stat-label">Total Flashcards</div>
+    </div>
+    <div class="card">
+        <div class="stat-value">{{ "%.0f"|format(learning_stats.get('retention_rate', 0)) }}%</div>
+        <div class="stat-label">Retention Rate</div>
+    </div>
+    <div class="card">
+        <div class="stat-value">${{ "%.2f"|format(costs.get('month', 0)) }}</div>
+        <div class="stat-label">Monthly Cost</div>
+    </div>
+</div>
+
+<div class="grid grid-2">
+    <div class="card">
+        <div class="card-header">
+            <h2>Recent Alerts</h2>
+            <a href="/dashboard/alerts" class="btn btn-secondary btn-sm">View All</a>
+        </div>
+        {% if alerts %}
+            {% for alert in alerts %}
+            <div class="alert-item {{ alert.urgency }}">
+                <strong>{{ alert.title }}</strong>
+                <p>{{ alert.message }}</p>
+                <small>{{ alert.created_at }}</small>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="empty-state">No recent alerts</div>
+        {% endif %}
+    </div>
+    
+    <div class="card">
+        <div class="card-header">
+            <h2>Service Status</h2>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Service</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for service in services %}
+                <tr>
+                    <td>{{ service.name }}</td>
+                    <td>
+                        <span class="badge {% if service.status == 'configured' %}badge-success{% else %}badge-warning{% endif %}">
+                            {{ service.icon }} {{ service.status }}
+                        </span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h2>Cost Tracking</h2>
+    </div>
+    <div class="grid grid-3">
+        <div>
+            <div class="stat-value">${{ "%.2f"|format(costs.get('today', 0)) }}</div>
+            <div class="stat-label">Today</div>
+        </div>
+        <div>
+            <div class="stat-value">${{ "%.2f"|format(costs.get('month', 0)) }}</div>
+            <div class="stat-label">This Month</div>
+        </div>
+        <div>
+            <div class="stat-value">${{ "%.2f"|format(costs.get('remaining', 0)) }}</div>
+            <div class="stat-label">Budget Remaining</div>
+        </div>
+    </div>
+</div>
+{% endblock %}

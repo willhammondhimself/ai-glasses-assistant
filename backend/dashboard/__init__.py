@@ -1,31 +1,4 @@
-"""
-WHAM Web Dashboard - Backend API Module.
-Provides web access to WHAM features without Halo glasses.
-"""
-from .api import router as dashboard_router
-from .models import (
-    CaptureCreate,
-    CaptureUpdate,
-    CaptureResponse,
-    MemoryCreate,
-    MemoryResponse,
-    ChallengeProgress,
-    SessionStats,
-    CostBreakdown,
-    OpponentProfile,
-    HealthStatus,
-)
+"""WHAM Dashboard - Web UI for monitoring and management."""
+from .routes import router, init_templates
 
-__all__ = [
-    "dashboard_router",
-    "CaptureCreate",
-    "CaptureUpdate",
-    "CaptureResponse",
-    "MemoryCreate",
-    "MemoryResponse",
-    "ChallengeProgress",
-    "SessionStats",
-    "CostBreakdown",
-    "OpponentProfile",
-    "HealthStatus",
-]
+__all__ = ["router", "init_templates"]

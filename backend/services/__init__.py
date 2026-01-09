@@ -15,6 +15,9 @@ from .travel_service import TravelService, get_travel_service, Flight, Trip, Hot
 from .learning_service import LearningService, get_learning_service, Flashcard, LearningStats
 from .proactive_engine import ProactiveEngine, get_proactive_engine, Alert, AlertType
 
+# Sprint 5 services
+from .answer_evaluator import AnswerEvaluator, get_answer_evaluator
+
 __all__ = [
     # Sprint 1 services
     "GmailService",
@@ -54,4 +57,7 @@ __all__ = [
     "get_proactive_engine",
     "Alert",
     "AlertType",
+    # Sprint 5 services
+    "AnswerEvaluator",
+    "get_answer_evaluator",
 ]
