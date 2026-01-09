@@ -27,6 +27,9 @@ from backend.voice.tools.base import VoiceToolResult
 # Personality
 from backend.voice.personality import get_dynamic_system_prompt, get_greeting_instruction
 
+# Wake word service
+from backend.services.wakeword_service import get_wake_word_service
+
 # Voice status tracking
 from backend.voice.status import (
     voice_status,
@@ -88,8 +91,10 @@ RULES:
 @dataclass
 class VoiceConfig:
     """Configuration for WHAM voice agent."""
-    model: str = "gemini-2.0-flash-exp"  # Gemini 2.0 Flash experimental for Live API
+    model: str = "gemini-2.5-flash"  # Gemini 2.5 Flash for Live API
     voice: str = "Puck"  # Gemini voice preset: Puck, Charon, Kore, Fenrir, Aoede
+    require_wake_word: bool = False  # If True, only respond to "WHAM, ..." queries
+    wake_word: str = "wham"  # The wake word to listen for
 
 
 class ToolIntegration:
@@ -98,7 +103,59 @@ class ToolIntegration:
     def __init__(self):
         self.router = ToolRouter()
         register_default_tools(self.router)
+        self._context_memory = None
         logger.info(f"Tool integration ready with {len(self.router.tools)} tools")
+
+    def _get_context_memory(self):
+        """Lazy load context memory for RAG injection."""
+        if self._context_memory is None:
+            try:
+                from phone_client.core.context_memory import ContextMemory
+                config = {
+                    "context_memory": {
+                        "max_memories": 10000,
+                        "auto_extract_entities": True,
+                        "relevance_threshold": 0.2
+                    }
+                }
+                self._context_memory = ContextMemory(config, storage_dir="./memory")
+                logger.info("Context memory loaded for RAG injection")
+            except Exception as e:
+                logger.warning(f"Could not load context memory: {e}")
+                self._context_memory = None
+        return self._context_memory
+
+    def get_relevant_context(self, query: str, limit: int = 3) -> str:
+        """Get relevant memory context for a query.
+
+        Args:
+            query: The user's query
+            limit: Max memories to retrieve
+
+        Returns:
+            Formatted context string or empty string if no relevant memories
+        """
+        try:
+            cm = self._get_context_memory()
+            if cm is None:
+                return ""
+
+            memories = cm.recall(query, limit=limit)
+            if not memories:
+                return ""
+
+            # Format memories for injection
+            context_parts = []
+            for mem in memories:
+                context_parts.append(f"- {mem.content}")
+
+            context = "\n".join(context_parts)
+            logger.info(f"Injecting {len(memories)} relevant memories for query")
+            return context
+
+        except Exception as e:
+            logger.warning(f"Error getting memory context: {e}")
+            return ""
 
     async def process_query(self, query: str) -> Optional[VoiceToolResult]:
         """Process a query through the tool router.
@@ -135,12 +192,38 @@ class WHAMVoiceAgent:
     def __init__(self, config: VoiceConfig = None):
         self.config = config or VoiceConfig()
         self.tool_integration = ToolIntegration()
+        self.wake_word_service = get_wake_word_service()
 
         # Verify API keys
         if not os.getenv("GEMINI_API_KEY"):
             raise ValueError("GEMINI_API_KEY environment variable required")
 
-        logger.info("WHAM Voice Agent initialized with tools")
+        logger.info(f"WHAM Voice Agent initialized with tools (wake_word={self.config.wake_word}, required={self.config.require_wake_word})")
+
+    def check_wake_word(self, transcript: str) -> tuple[bool, str]:
+        """Check if transcript contains wake word and extract query.
+
+        Args:
+            transcript: The transcribed speech
+
+        Returns:
+            Tuple of (should_process, query)
+            - If wake word not required: (True, original_transcript)
+            - If wake word required and detected: (True, query_after_wake_word)
+            - If wake word required but not detected: (False, "")
+        """
+        if not self.config.require_wake_word:
+            return True, transcript
+
+        # Use wake word service for detection
+        detected, query = self.wake_word_service.detect_in_text(transcript)
+
+        if detected:
+            logger.info(f"Wake word detected! Query: '{query}'")
+            return True, query if query else transcript
+
+        logger.debug(f"Wake word not detected in: '{transcript[:50]}...'")
+        return False, ""
 
     def create_realtime_model(self) -> RealtimeModel:
         """Create a Gemini Realtime Model for speech-to-speech."""
@@ -171,6 +254,12 @@ class WHAMVoiceAgent:
         # Try to route through tools
         result = await self.tool_integration.process_query(transcript)
 
+        # Get relevant memory context for RAG injection
+        memory_context = self.tool_integration.get_relevant_context(transcript)
+        memory_section = ""
+        if memory_context:
+            memory_section = f"\n\n[RELEVANT CONTEXT FROM MEMORY]:\n{memory_context}"
+
         if result:
             # Get tool name from routing metadata if available
             tool_name = "unknown"
@@ -182,18 +271,33 @@ class WHAMVoiceAgent:
             await voice_tool_executing(tool_name)
 
             # Tool was matched - inject context and let LLM respond
-            context = self.tool_integration.format_context_injection(result)
-            logger.info(f"Injecting tool context: {context[:100]}...")
+            tool_context = self.tool_integration.format_context_injection(result)
+            logger.info(f"Injecting tool context: {tool_context[:100]}...")
+            if memory_context:
+                logger.info(f"Injecting memory context: {memory_context[:100]}...")
 
             # Broadcast speaking status before generating reply
             await voice_speaking()
 
-            # Generate a response using the tool result as context
+            # Generate a response using tool result + memory context
             await session.generate_reply(
-                instructions=f"The user asked: '{transcript}'\n\n{context}\n\nRespond naturally using this information."
+                instructions=f"The user asked: '{transcript}'\n\n{tool_context}{memory_section}\n\nRespond naturally using this information."
             )
 
             # Back to idle after speaking
+            await voice_idle()
+            return True
+
+        # No tool matched - check if we have memory context to inject
+        if memory_context:
+            logger.info(f"No tool matched, but injecting memory context: {memory_context[:100]}...")
+            await voice_speaking()
+
+            # Generate response with just memory context
+            await session.generate_reply(
+                instructions=f"The user asked: '{transcript}'{memory_section}\n\nIf the memory context is relevant, use it to inform your response. Otherwise, respond naturally."
+            )
+
             await voice_idle()
             return True
 
@@ -244,19 +348,30 @@ async def entrypoint(ctx: agents.JobContext):
     # This allows us to intercept queries and route to tools
     @session.on("user_speech_committed")
     async def on_user_speech(event):
-        """Handle committed user speech - check for tool triggers."""
+        """Handle committed user speech - check for wake word and tool triggers."""
         try:
             transcript = event.transcript if hasattr(event, 'transcript') else str(event)
-            if transcript:
-                logger.info(f"User speech: {transcript[:100]}...")
-                # Broadcast listening status with transcript
-                await voice_listening(transcript=transcript)
-                # Check if this triggers a tool
-                tool_handled = await wham.handle_user_speech(session, transcript)
-                if tool_handled:
-                    logger.info("Query handled by tool - response injected")
-                # Set to thinking while processing
-                await voice_thinking()
+            if not transcript:
+                return
+
+            logger.info(f"User speech: {transcript[:100]}...")
+
+            # Check wake word (if required)
+            should_process, query = wham.check_wake_word(transcript)
+            if not should_process:
+                logger.debug("Wake word not detected - ignoring")
+                return
+
+            # Broadcast listening status with transcript
+            await voice_listening(transcript=query)
+
+            # Check if this triggers a tool
+            tool_handled = await wham.handle_user_speech(session, query)
+            if tool_handled:
+                logger.info("Query handled by tool - response injected")
+
+            # Set to thinking while processing
+            await voice_thinking()
         except Exception as e:
             logger.error(f"Error handling user speech: {e}")
 

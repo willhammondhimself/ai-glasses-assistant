@@ -136,7 +136,7 @@ class VoiceHandler:
         self.frame = frame
         self._mock_mode = frame is None
         self._listening = False
-        self._wake_word = "hey coach"
+        self._wake_word = "wham"
         self._use_wake_word = False
 
     async def listen(self, timeout_ms: int = 5000) -> Optional[VoiceResult]:
