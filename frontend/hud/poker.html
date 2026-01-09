@@ -1,0 +1,2798 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WHAM Poker HUD - AR Glasses</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0a;
+            font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+            overflow: hidden;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        /* Main container */
+        .container {
+            display: flex;
+            height: 100vh;
+        }
+
+        /* Video feed (left side) */
+        .video-panel {
+            flex: 1;
+            position: relative;
+            background: #111;
+        }
+
+        #webcam {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        /* HUD overlay on video */
+        #hud-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        /* EV panel (right side) */
+        .ev-panel {
+            width: 320px;
+            background: #000;
+            border-left: 1px solid #00FF00;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        /* Green AR color scheme */
+        .ev-panel h2 {
+            color: #00FF00;
+            font-size: 16px;
+            margin-bottom: 15px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        /* Cards display */
+        .cards-display {
+            background: rgba(0, 255, 0, 0.05);
+            border: 1px solid rgba(0, 255, 0, 0.3);
+            border-radius: 4px;
+            padding: 12px;
+            margin-bottom: 15px;
+        }
+
+        .cards-label {
+            color: rgba(0, 255, 0, 0.6);
+            font-size: 10px;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+
+        .cards-value {
+            color: #00FF00;
+            font-size: 24px;
+            font-weight: bold;
+            letter-spacing: 2px;
+        }
+
+        .cards-value .suit-c, .cards-value .suit-s { color: #444; }
+        .cards-value .suit-h, .cards-value .suit-d { color: #FF4040; }
+
+        /* Equity meter */
+        .equity-meter {
+            background: rgba(0, 255, 0, 0.05);
+            border: 1px solid rgba(0, 255, 0, 0.3);
+            border-radius: 4px;
+            padding: 12px;
+            margin-bottom: 15px;
+        }
+
+        .equity-bar {
+            height: 24px;
+            background: #222;
+            border-radius: 2px;
+            overflow: hidden;
+            margin-top: 8px;
+        }
+
+        .equity-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #FF4040, #FFFF00, #00FF00);
+            transition: width 0.3s ease;
+        }
+
+        .equity-value {
+            color: #00FF00;
+            font-size: 36px;
+            font-weight: bold;
+        }
+
+        /* EV table */
+        .ev-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 15px;
+        }
+
+        .ev-table th {
+            color: rgba(0, 255, 0, 0.6);
+            font-size: 10px;
+            text-transform: uppercase;
+            text-align: left;
+            padding: 8px 4px;
+            border-bottom: 1px solid rgba(0, 255, 0, 0.2);
+        }
+
+        .ev-table td {
+            color: #00FF00;
+            font-size: 13px;
+            padding: 8px 4px;
+            border-bottom: 1px solid rgba(0, 255, 0, 0.1);
+        }
+
+        .ev-table tr.optimal {
+            background: rgba(0, 255, 0, 0.1);
+        }
+
+        .ev-table .ev-positive { color: #00FF00; }
+        .ev-table .ev-negative { color: #FF4040; }
+
+        /* Recommendation box */
+        .recommendation {
+            background: rgba(0, 255, 0, 0.1);
+            border: 2px solid #00FF00;
+            border-radius: 4px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+
+        .recommendation-action {
+            color: #00FF00;
+            font-size: 24px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        .recommendation-text {
+            color: rgba(0, 255, 0, 0.8);
+            font-size: 12px;
+            margin-top: 8px;
+            line-height: 1.4;
+        }
+
+        /* VPIP stats */
+        .vpip-stats {
+            background: rgba(0, 255, 0, 0.05);
+            border: 1px solid rgba(0, 255, 0, 0.3);
+            border-radius: 4px;
+            padding: 12px;
+            margin-bottom: 15px;
+        }
+
+        .vpip-value {
+            color: #00FF00;
+            font-size: 20px;
+            font-weight: bold;
+        }
+
+        .vpip-leak {
+            color: #FFFF00;
+            font-size: 11px;
+            margin-top: 8px;
+        }
+
+        /* Bet size slider */
+        .bet-slider-container {
+            background: rgba(0, 255, 0, 0.05);
+            border: 1px solid rgba(0, 255, 0, 0.3);
+            border-radius: 4px;
+            padding: 12px;
+            margin-bottom: 15px;
+        }
+
+        #bet-slider {
+            width: 100%;
+            height: 8px;
+            -webkit-appearance: none;
+            background: #222;
+            border-radius: 4px;
+            outline: none;
+            margin: 8px 0;
+        }
+
+        #bet-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #00FF00;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+        }
+
+        #bet-slider::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            background: #00FF00;
+            border-radius: 50%;
+            cursor: pointer;
+            border: none;
+        }
+
+        .bet-slider-labels {
+            display: flex;
+            justify-content: space-between;
+            color: rgba(0, 255, 0, 0.5);
+            font-size: 10px;
+            margin-top: 4px;
+        }
+
+        .bet-slider-value {
+            color: #00FF00;
+            font-size: 18px;
+            font-weight: bold;
+            text-align: center;
+            margin-top: 8px;
+        }
+
+        .ev-table tr.slider-highlight {
+            background: rgba(0, 255, 0, 0.25) !important;
+            border-left: 3px solid #00FF00 !important;
+        }
+
+        .ev-table tr.slider-highlight td {
+            color: #00FF00;
+            font-weight: bold;
+        }
+
+        /* VPIP line chart */
+        .vpip-chart-container {
+            background: rgba(0, 255, 0, 0.05);
+            border: 1px solid rgba(0, 255, 0, 0.3);
+            border-radius: 4px;
+            padding: 12px;
+            margin-bottom: 15px;
+        }
+
+        #vpip-chart {
+            width: 100%;
+            height: 80px;
+            display: block;
+        }
+
+        /* Hand log */
+        .hand-log-container {
+            background: rgba(0, 255, 0, 0.05);
+            border: 1px solid rgba(0, 255, 0, 0.3);
+            border-radius: 4px;
+            padding: 12px;
+            margin-bottom: 15px;
+        }
+
+        .hand-log-container .cards-label {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .hand-log-container button {
+            background: transparent;
+            color: #00FF00;
+            border: 1px solid rgba(0, 255, 0, 0.4);
+            padding: 4px 8px;
+            font-size: 10px;
+            cursor: pointer;
+            border-radius: 2px;
+        }
+
+        .hand-log-container button:hover {
+            background: rgba(0, 255, 0, 0.1);
+        }
+
+        .hand-log {
+            max-height: 120px;
+            overflow-y: auto;
+            margin-top: 8px;
+        }
+
+        .log-entry {
+            display: flex;
+            gap: 10px;
+            padding: 4px 0;
+            border-bottom: 1px solid rgba(0, 255, 0, 0.1);
+            font-size: 11px;
+        }
+
+        .log-cards {
+            color: #00FF00;
+            font-weight: bold;
+            min-width: 50px;
+        }
+
+        .log-equity {
+            color: rgba(0, 255, 0, 0.7);
+        }
+
+        .log-action {
+            color: #FFFF00;
+        }
+
+        /* Controls */
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            display: flex;
+            gap: 10px;
+            z-index: 100;
+        }
+
+        .controls button {
+            padding: 10px 20px;
+            background: rgba(0, 255, 0, 0.1);
+            color: #00FF00;
+            border: 1px solid #00FF00;
+            font-family: inherit;
+            font-size: 12px;
+            cursor: pointer;
+            border-radius: 4px;
+            text-transform: uppercase;
+        }
+
+        .controls button:hover {
+            background: rgba(0, 255, 0, 0.2);
+        }
+
+        .controls button.active {
+            background: #00FF00;
+            color: #000;
+        }
+
+        /* Manual input */
+        .manual-input {
+            position: fixed;
+            bottom: 70px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.9);
+            border: 1px solid rgba(0, 255, 0, 0.3);
+            padding: 15px;
+            border-radius: 4px;
+            z-index: 100;
+        }
+
+        .manual-input input {
+            background: #111;
+            border: 1px solid rgba(0, 255, 0, 0.4);
+            color: #00FF00;
+            padding: 8px;
+            font-family: inherit;
+            font-size: 12px;
+            width: 100px;
+            margin-right: 8px;
+            border-radius: 2px;
+        }
+
+        .manual-input input::placeholder {
+            color: rgba(0, 255, 0, 0.3);
+        }
+
+        .manual-input label {
+            color: rgba(0, 255, 0, 0.6);
+            font-size: 10px;
+            display: block;
+            margin-bottom: 4px;
+        }
+
+        .input-group {
+            display: inline-block;
+            margin-right: 10px;
+        }
+
+        /* Status indicator */
+        .status {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: #00FF00;
+            font-size: 11px;
+            z-index: 100;
+        }
+
+        .status.disconnected {
+            color: #FF4040;
+        }
+
+        .status::before {
+            content: '';
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: currentColor;
+            margin-right: 8px;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* Fullscreen */
+        .fullscreen-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 8px 12px;
+            background: rgba(0, 255, 0, 0.1);
+            color: #00FF00;
+            border: 1px solid rgba(0, 255, 0, 0.4);
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 11px;
+            border-radius: 4px;
+            z-index: 100;
+        }
+
+        /* Calibration overlay */
+        .calibration-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            display: none;
+            z-index: 200;
+            cursor: crosshair;
+        }
+
+        .calibration-overlay.active {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .calibration-instructions {
+            color: #00FF00;
+            font-size: 18px;
+            text-align: center;
+            background: rgba(0, 0, 0, 0.9);
+            padding: 30px;
+            border: 2px solid #00FF00;
+            border-radius: 8px;
+        }
+
+        .calibration-box {
+            position: absolute;
+            border: 2px dashed #00FF00;
+            background: rgba(0, 255, 0, 0.1);
+            pointer-events: none;
+        }
+
+        /* Multi-table container - 2x2 grid for 4 tables */
+        .multi-table-container {
+            display: none;
+            height: 100vh;
+            width: calc(100vw - 320px);
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        .multi-table-container.active {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: 1fr 1fr;
+            gap: 2px;
+            background: #00FF00;
+        }
+
+        .multi-table-container.tables-2 {
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: 1fr;
+        }
+
+        .multi-table-container.tables-3 {
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: 1fr 1fr;
+        }
+
+        .multi-table-container .table-cell {
+            position: relative;
+            background: #0a0a0a;
+            overflow: hidden;
+        }
+
+        .multi-table-container .table-cell.focused {
+            outline: 3px solid #00FF00;
+            outline-offset: -3px;
+        }
+
+        .multi-table-container .table-cell video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .multi-table-container .table-cell canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        .table-indicator {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.85);
+            color: #00FF00;
+            padding: 8px 14px;
+            font-size: 13px;
+            font-weight: bold;
+            border-radius: 6px;
+            z-index: 10;
+            border: 2px solid rgba(0, 255, 0, 0.4);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .table-indicator::before {
+            content: '';
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: rgba(0, 255, 0, 0.4);
+            margin-right: 8px;
+            transition: background 0.2s ease;
+        }
+
+        .table-indicator:hover {
+            background: rgba(0, 255, 0, 0.2);
+            transform: scale(1.02);
+        }
+
+        .table-indicator.active {
+            background: rgba(0, 255, 0, 0.25);
+            border-color: #00FF00;
+            box-shadow: 0 0 15px rgba(0, 255, 0, 0.3);
+        }
+
+        .table-indicator.active::before {
+            background: #00FF00;
+            box-shadow: 0 0 8px #00FF00;
+            animation: pulse-dot 1.5s infinite;
+        }
+
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.7; transform: scale(1.2); }
+        }
+
+        /* Mini HUD overlay for multi-table */
+        .mini-hud {
+            position: absolute;
+            bottom: 12px;
+            right: 12px;
+            background: rgba(0, 0, 0, 0.9);
+            border: 2px solid rgba(0, 255, 0, 0.6);
+            padding: 10px 16px;
+            border-radius: 8px;
+            z-index: 10;
+            backdrop-filter: blur(4px);
+            min-width: 90px;
+            transition: all 0.2s ease;
+        }
+
+        .mini-hud:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.3);
+        }
+
+        .mini-hud .equity-display {
+            color: #00FF00;
+            font-size: 28px;
+            font-weight: bold;
+            text-align: center;
+            text-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+        }
+
+        .mini-hud .cards-mini {
+            color: rgba(0, 255, 0, 0.9);
+            font-size: 12px;
+            text-align: center;
+            margin-top: 6px;
+            font-weight: bold;
+            letter-spacing: 1px;
+        }
+
+        .mini-hud .action-mini {
+            color: #FFFF00;
+            font-size: 11px;
+            text-transform: uppercase;
+            text-align: center;
+            margin-top: 6px;
+            font-weight: bold;
+            letter-spacing: 1px;
+            text-shadow: 0 0 8px rgba(255, 255, 0, 0.4);
+        }
+
+        .mini-hud .action-mini:empty {
+            display: none;
+        }
+
+        /* Camera selector dropdown */
+        .camera-selector {
+            position: absolute;
+            top: 40px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.9);
+            border: 1px solid rgba(0, 255, 0, 0.4);
+            border-radius: 4px;
+            padding: 8px;
+            z-index: 20;
+            display: none;
+        }
+
+        .camera-selector.visible {
+            display: block;
+        }
+
+        .camera-selector select {
+            background: #111;
+            color: #00FF00;
+            border: 1px solid rgba(0, 255, 0, 0.4);
+            padding: 6px;
+            font-family: inherit;
+            font-size: 11px;
+            width: 150px;
+            border-radius: 2px;
+        }
+
+        /* Table count buttons */
+        .table-count-buttons {
+            display: flex;
+            gap: 5px;
+            margin-top: 8px;
+        }
+
+        .table-count-btn {
+            background: rgba(0, 255, 0, 0.1);
+            color: #00FF00;
+            border: 1px solid rgba(0, 255, 0, 0.4);
+            padding: 4px 8px;
+            font-size: 10px;
+            cursor: pointer;
+            border-radius: 2px;
+        }
+
+        .table-count-btn.active {
+            background: #00FF00;
+            color: #000;
+        }
+
+        /* Physics Mode / OCR Debug Overlay */
+        .physics-mode-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 15;
+        }
+
+        .physics-mode-active .physics-mode-overlay {
+            display: block;
+        }
+
+        .ocr-bbox {
+            position: absolute;
+            border: 2px solid;
+            background: rgba(0, 0, 0, 0.3);
+            font-size: 10px;
+            font-family: Menlo, monospace;
+            pointer-events: none;
+        }
+
+        .ocr-bbox.card-detected {
+            border-color: #00FF00;
+            box-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+        }
+
+        .ocr-bbox.pot-detected {
+            border-color: #FFFF00;
+            box-shadow: 0 0 10px rgba(255, 255, 0, 0.5);
+        }
+
+        .ocr-bbox.player-detected {
+            border-color: #00FFFF;
+            box-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+        }
+
+        .ocr-bbox.low-confidence {
+            border-style: dashed;
+            opacity: 0.7;
+        }
+
+        .ocr-bbox-label {
+            position: absolute;
+            top: -20px;
+            left: 0;
+            background: rgba(0, 0, 0, 0.8);
+            color: #00FF00;
+            padding: 2px 6px;
+            font-size: 10px;
+            white-space: nowrap;
+            border-radius: 2px;
+        }
+
+        .ocr-bbox-confidence {
+            position: absolute;
+            bottom: -18px;
+            left: 0;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 2px 6px;
+            font-size: 9px;
+            border-radius: 2px;
+        }
+
+        .confidence-high { color: #00FF00; }
+        .confidence-medium { color: #FFFF00; }
+        .confidence-low { color: #FF4040; }
+
+        /* Physics debug panel */
+        .physics-debug-panel {
+            position: fixed;
+            top: 60px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.9);
+            border: 1px solid rgba(0, 255, 0, 0.4);
+            border-radius: 4px;
+            padding: 12px;
+            z-index: 100;
+            font-size: 11px;
+            min-width: 200px;
+            display: none;
+        }
+
+        .physics-debug-panel.visible {
+            display: block;
+        }
+
+        .physics-debug-panel h3 {
+            color: #00FF00;
+            font-size: 12px;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .physics-debug-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 4px 0;
+            border-bottom: 1px solid rgba(0, 255, 0, 0.1);
+        }
+
+        .physics-debug-row:last-child {
+            border-bottom: none;
+        }
+
+        .physics-debug-label {
+            color: rgba(0, 255, 0, 0.6);
+        }
+
+        .physics-debug-value {
+            color: #00FF00;
+            font-weight: bold;
+        }
+
+        .physics-fps {
+            color: #00FF00;
+        }
+
+        .physics-fps.low {
+            color: #FF4040;
+        }
+
+        /* OCR regions visualization */
+        .ocr-region-indicator {
+            position: absolute;
+            border: 1px dashed rgba(0, 255, 0, 0.3);
+            pointer-events: none;
+        }
+
+        .ocr-region-indicator::before {
+            content: attr(data-region);
+            position: absolute;
+            top: -14px;
+            left: 4px;
+            font-size: 8px;
+            color: rgba(0, 255, 0, 0.5);
+            text-transform: uppercase;
+        }
+
+        .controls button.calibrating {
+            background: #FFFF00 !important;
+            color: #000 !important;
+            animation: blink 1s infinite;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+
+        /* Villain Panel Styles */
+        .villain-panel {
+            background: rgba(0, 255, 0, 0.05);
+            border: 1px solid rgba(0, 255, 0, 0.3);
+            border-radius: 4px;
+            padding: 12px;
+            margin-bottom: 15px;
+        }
+
+        .villain-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .villain-header .cards-label {
+            margin-bottom: 0;
+        }
+
+        .villain-seat-selector {
+            background: #111;
+            color: #00FF00;
+            border: 1px solid rgba(0, 255, 0, 0.4);
+            padding: 4px 8px;
+            font-family: inherit;
+            font-size: 10px;
+            border-radius: 2px;
+        }
+
+        .villain-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+
+        .villain-stat {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 6px;
+            border-radius: 2px;
+        }
+
+        .villain-stat-label {
+            color: rgba(0, 255, 0, 0.5);
+            font-size: 9px;
+            text-transform: uppercase;
+        }
+
+        .villain-stat-value {
+            color: #00FF00;
+            font-size: 16px;
+            font-weight: bold;
+        }
+
+        .villain-type {
+            color: #FFFF00;
+            font-size: 11px;
+            font-weight: bold;
+            margin-bottom: 6px;
+        }
+
+        .villain-range {
+            color: rgba(0, 255, 0, 0.8);
+            font-size: 10px;
+            margin-bottom: 6px;
+        }
+
+        .villain-actions {
+            color: rgba(0, 255, 0, 0.6);
+            font-size: 11px;
+            font-family: monospace;
+            letter-spacing: 2px;
+        }
+
+        .villain-tip {
+            color: #00FFFF;
+            font-size: 10px;
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid rgba(0, 255, 0, 0.2);
+        }
+
+        /* News Ticker Styles */
+        .news-ticker {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 28px;
+            background: rgba(0, 0, 0, 0.85);
+            border-bottom: 1px solid rgba(0, 255, 0, 0.3);
+            overflow: hidden;
+            z-index: 20;
+        }
+
+        .news-ticker-label {
+            position: absolute;
+            left: 0;
+            top: 0;
+            height: 100%;
+            padding: 0 12px;
+            background: rgba(0, 255, 0, 0.15);
+            color: #00FF00;
+            font-size: 10px;
+            font-weight: bold;
+            text-transform: uppercase;
+            display: flex;
+            align-items: center;
+            z-index: 1;
+            border-right: 1px solid rgba(0, 255, 0, 0.3);
+        }
+
+        .news-ticker-content {
+            position: absolute;
+            left: 70px;
+            top: 0;
+            height: 100%;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            animation: ticker-scroll 30s linear infinite;
+        }
+
+        .news-ticker-content:hover {
+            animation-play-state: paused;
+        }
+
+        @keyframes ticker-scroll {
+            0% { transform: translateX(100%); }
+            100% { transform: translateX(-100%); }
+        }
+
+        .news-item {
+            display: inline-flex;
+            align-items: center;
+            padding: 0 20px;
+            font-size: 11px;
+        }
+
+        .news-item.poker {
+            color: #00FF00;
+        }
+
+        .news-item.general {
+            color: rgba(0, 255, 0, 0.7);
+        }
+
+        .news-item::before {
+            content: '\u2022';
+            margin-right: 8px;
+            color: rgba(0, 255, 0, 0.4);
+        }
+
+        .news-item.poker::before {
+            content: '\u2660';
+            color: #00FF00;
+        }
+
+        .news-ticker-toggle {
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: transparent;
+            border: 1px solid rgba(0, 255, 0, 0.3);
+            color: rgba(0, 255, 0, 0.6);
+            font-size: 10px;
+            padding: 2px 6px;
+            cursor: pointer;
+            border-radius: 2px;
+            z-index: 2;
+        }
+
+        .news-ticker-toggle:hover {
+            background: rgba(0, 255, 0, 0.1);
+        }
+
+        .news-ticker.collapsed {
+            height: 0;
+            border-bottom: none;
+        }
+
+        .news-ticker.collapsed .news-ticker-content,
+        .news-ticker.collapsed .news-ticker-label {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="status" id="status">Connecting...</div>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">Fullscreen</button>
+
+    <!-- Physics Mode Debug Panel -->
+    <div class="physics-debug-panel" id="physics-debug-panel">
+        <h3>OCR Debug</h3>
+        <div class="physics-debug-row">
+            <span class="physics-debug-label">FPS</span>
+            <span class="physics-debug-value physics-fps" id="debug-fps">0</span>
+        </div>
+        <div class="physics-debug-row">
+            <span class="physics-debug-label">Latency</span>
+            <span class="physics-debug-value" id="debug-latency">0ms</span>
+        </div>
+        <div class="physics-debug-row">
+            <span class="physics-debug-label">Cards Found</span>
+            <span class="physics-debug-value" id="debug-cards">0</span>
+        </div>
+        <div class="physics-debug-row">
+            <span class="physics-debug-label">Avg Confidence</span>
+            <span class="physics-debug-value" id="debug-confidence">0%</span>
+        </div>
+        <div class="physics-debug-row">
+            <span class="physics-debug-label">Pot Detected</span>
+            <span class="physics-debug-value" id="debug-pot">No</span>
+        </div>
+        <div class="physics-debug-row">
+            <span class="physics-debug-label">Frame Size</span>
+            <span class="physics-debug-value" id="debug-frame-size">640x360</span>
+        </div>
+    </div>
+
+    <!-- Calibration overlay -->
+    <div class="calibration-overlay" id="calibration-overlay" onclick="handleCalibrationClick(event)">
+        <div class="calibration-instructions" id="calibration-instructions">
+            Click on the POT area to set OCR focus region<br>
+            <small style="color: rgba(0,255,0,0.6)">Press ESC to cancel</small>
+        </div>
+        <div class="calibration-box" id="calibration-box"></div>
+    </div>
+
+    <!-- Multi-table container (hidden by default) -->
+    <div class="multi-table-container" id="multi-table-container">
+        <!-- Table cells will be dynamically generated -->
+    </div>
+
+    <div class="container" id="single-table-container">
+        <!-- Video panel with webcam and HUD overlay -->
+        <div class="video-panel" id="video-panel">
+            <!-- News ticker overlay -->
+            <div class="news-ticker" id="news-ticker">
+                <div class="news-ticker-label">NEWS</div>
+                <div class="news-ticker-content" id="news-ticker-content">
+                    <span class="news-item poker">Loading poker news...</span>
+                </div>
+                <button class="news-ticker-toggle" onclick="toggleNewsTicker()">×</button>
+            </div>
+            <video id="webcam" autoplay playsinline muted></video>
+            <canvas id="hud-overlay"></canvas>
+            <!-- Physics mode bounding box overlay -->
+            <div class="physics-mode-overlay" id="physics-overlay"></div>
+        </div>
+
+        <!-- EV panel -->
+        <div class="ev-panel">
+            <h2>Poker HUD</h2>
+
+            <!-- Detected cards -->
+            <div class="cards-display">
+                <div class="cards-label">Hole Cards</div>
+                <div class="cards-value" id="hole-cards">--</div>
+            </div>
+
+            <div class="cards-display">
+                <div class="cards-label">Board</div>
+                <div class="cards-value" id="board-cards">--</div>
+            </div>
+
+            <!-- Bet size slider -->
+            <div class="bet-slider-container">
+                <div class="cards-label">Bet Size</div>
+                <input type="range" id="bet-slider" min="0.25" max="2" step="0.25" value="0.5">
+                <div class="bet-slider-labels">
+                    <span>1/4</span>
+                    <span>1/2</span>
+                    <span>3/4</span>
+                    <span>pot</span>
+                    <span>1.5x</span>
+                    <span>2x</span>
+                </div>
+                <div class="bet-slider-value" id="bet-slider-value">0.5x pot ($<span id="bet-slider-amount">0</span>)</div>
+            </div>
+
+            <!-- Equity meter -->
+            <div class="equity-meter">
+                <div class="cards-label">Hand Equity</div>
+                <div class="equity-value"><span id="equity-value">--</span>%</div>
+                <div class="equity-bar">
+                    <div class="equity-fill" id="equity-fill" style="width: 0%"></div>
+                </div>
+            </div>
+
+            <!-- Recommendation -->
+            <div class="recommendation">
+                <div class="recommendation-action" id="recommendation-action">--</div>
+                <div class="recommendation-text" id="recommendation-text">Waiting for cards...</div>
+            </div>
+
+            <!-- EV table -->
+            <h2>EV by Bet Size</h2>
+            <table class="ev-table">
+                <thead>
+                    <tr>
+                        <th>Size</th>
+                        <th>Bet</th>
+                        <th>EV</th>
+                    </tr>
+                </thead>
+                <tbody id="ev-table-body">
+                    <tr><td colspan="3" style="color: rgba(0,255,0,0.4)">No data</td></tr>
+                </tbody>
+            </table>
+
+            <!-- VPIP stats -->
+            <div class="vpip-stats">
+                <div class="cards-label">VPIP (Session)</div>
+                <div class="vpip-value"><span id="vpip-value">--</span>%</div>
+                <div class="vpip-leak" id="vpip-leak"></div>
+            </div>
+
+            <!-- VPIP line chart -->
+            <div class="vpip-chart-container">
+                <div class="cards-label">VPIP Trend</div>
+                <canvas id="vpip-chart" width="280" height="80"></canvas>
+            </div>
+
+            <!-- Hand log -->
+            <div class="hand-log-container">
+                <div class="cards-label">
+                    <span>Hand Log</span>
+                    <button onclick="exportHandLog()">Export CSV</button>
+                </div>
+                <div id="hand-log" class="hand-log"></div>
+            </div>
+
+            <!-- Villain tracking panel -->
+            <div class="villain-panel" id="villain-panel">
+                <div class="villain-header">
+                    <span class="cards-label">Villain @ Seat</span>
+                    <select class="villain-seat-selector" id="villain-seat-select" onchange="selectVillainSeat(this.value)">
+                        <option value="">Select...</option>
+                        <option value="Seat 1">Seat 1</option>
+                        <option value="Seat 2">Seat 2</option>
+                        <option value="Seat 3">Seat 3</option>
+                        <option value="Seat 4">Seat 4</option>
+                        <option value="Seat 5">Seat 5</option>
+                        <option value="Seat 6">Seat 6</option>
+                    </select>
+                </div>
+                <div class="villain-stats">
+                    <div class="villain-stat">
+                        <div class="villain-stat-label">VPIP</div>
+                        <div class="villain-stat-value" id="villain-vpip">--</div>
+                    </div>
+                    <div class="villain-stat">
+                        <div class="villain-stat-label">PFR</div>
+                        <div class="villain-stat-value" id="villain-pfr">--</div>
+                    </div>
+                    <div class="villain-stat">
+                        <div class="villain-stat-label">AGG</div>
+                        <div class="villain-stat-value" id="villain-agg">--</div>
+                    </div>
+                    <div class="villain-stat">
+                        <div class="villain-stat-label">F2CB</div>
+                        <div class="villain-stat-value" id="villain-f2cb">--</div>
+                    </div>
+                </div>
+                <div class="villain-type" id="villain-type">No data</div>
+                <div class="villain-range" id="villain-range">Select a seat to view stats</div>
+                <div class="villain-actions">
+                    <span class="cards-label">Recent:</span>
+                    <span id="villain-actions">-- -- -- -- --</span>
+                </div>
+                <div class="villain-tip" id="villain-tip"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Manual input -->
+    <div class="manual-input">
+        <div class="input-group">
+            <label>Hole Cards</label>
+            <input type="text" id="input-hole" placeholder="AhKd">
+        </div>
+        <div class="input-group">
+            <label>Board</label>
+            <input type="text" id="input-board" placeholder="QsJhTc">
+        </div>
+        <div class="input-group">
+            <label>Pot</label>
+            <input type="text" id="input-pot" placeholder="100">
+        </div>
+        <div class="input-group">
+            <label>Bet</label>
+            <input type="text" id="input-bet" placeholder="25">
+        </div>
+        <button onclick="sendManualInput()" style="padding: 8px 16px; background: #00FF00; color: #000; border: none; cursor: pointer; border-radius: 2px;">Calculate</button>
+    </div>
+
+    <!-- Controls -->
+    <div class="controls">
+        <button id="btn-stream" onclick="toggleStream()">Start Stream</button>
+        <button onclick="requestVPIPStats()">VPIP Stats</button>
+        <button id="btn-calibrate" onclick="startCalibration()">Calibrate Pot</button>
+        <button id="btn-multitable" onclick="toggleMultiTable()">Multi-Table</button>
+        <button id="btn-physics" onclick="togglePhysicsMode()">Physics Mode</button>
+    </div>
+
+    <script>
+        // Poker HUD Client
+        const HUD = {
+            ws: null,
+            streaming: false,
+            frameInterval: null,
+            video: null,
+            canvas: null,
+            ctx: null,
+            currentPot: 0  // Track pot for slider calculations
+        };
+
+        // Bet slider functionality
+        function initBetSlider() {
+            const slider = document.getElementById('bet-slider');
+            if (!slider) return;
+
+            slider.addEventListener('input', (e) => {
+                const multiplier = parseFloat(e.target.value);
+                updateSliderDisplay(multiplier);
+                highlightEVRow(multiplier);
+            });
+
+            // Initial display
+            updateSliderDisplay(0.5);
+        }
+
+        function updateSliderDisplay(multiplier) {
+            const betAmount = Math.round(HUD.currentPot * multiplier);
+            const displayText = multiplier === 1 ? 'pot' : `${multiplier}x pot`;
+            document.getElementById('bet-slider-value').innerHTML =
+                `${displayText} ($<span id="bet-slider-amount">${betAmount}</span>)`;
+        }
+
+        function highlightEVRow(multiplier) {
+            // Map multiplier to size label
+            const sizeMap = {
+                0.25: '1/4',
+                0.33: '1/3',
+                0.5: '1/2',
+                0.67: '2/3',
+                0.75: '3/4',
+                1: 'pot',
+                1.25: '1.25x',
+                1.5: '1.5x',
+                1.75: '1.75x',
+                2: '2x'
+            };
+
+            // Find closest size
+            let targetSize = sizeMap[multiplier];
+            if (!targetSize) {
+                // Find closest match
+                const keys = Object.keys(sizeMap).map(parseFloat);
+                const closest = keys.reduce((prev, curr) =>
+                    Math.abs(curr - multiplier) < Math.abs(prev - multiplier) ? curr : prev
+                );
+                targetSize = sizeMap[closest];
+            }
+
+            // Remove existing highlight from all rows
+            document.querySelectorAll('.ev-table tbody tr').forEach(row => {
+                row.classList.remove('slider-highlight');
+            });
+
+            // Add highlight to matching row
+            document.querySelectorAll('.ev-table tbody tr').forEach(row => {
+                const sizeCell = row.querySelector('td:first-child');
+                if (sizeCell) {
+                    const cellText = sizeCell.textContent.replace(' *', '').trim();
+                    if (cellText === targetSize || cellText.includes(targetSize)) {
+                        row.classList.add('slider-highlight');
+                    }
+                }
+            });
+        }
+
+        // VPIP Line Chart
+        const VPIPChart = {
+            data: [],
+            maxPoints: 20,
+
+            add(vpip) {
+                this.data.push(vpip);
+                if (this.data.length > this.maxPoints) this.data.shift();
+                this.draw();
+            },
+
+            draw() {
+                const canvas = document.getElementById('vpip-chart');
+                if (!canvas) return;
+                const ctx = canvas.getContext('2d');
+                const w = canvas.width, h = canvas.height;
+
+                ctx.clearRect(0, 0, w, h);
+
+                if (this.data.length < 2) {
+                    ctx.fillStyle = 'rgba(0, 255, 0, 0.3)';
+                    ctx.font = '11px Menlo, monospace';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('Play more hands to see trend', w / 2, h / 2);
+                    return;
+                }
+
+                // Draw grid lines
+                ctx.strokeStyle = 'rgba(0, 255, 0, 0.1)';
+                ctx.lineWidth = 1;
+                for (let y = 0; y <= 100; y += 25) {
+                    const py = h - (y / 100 * h);
+                    ctx.beginPath();
+                    ctx.moveTo(0, py);
+                    ctx.lineTo(w, py);
+                    ctx.stroke();
+                }
+
+                // Draw line
+                ctx.strokeStyle = '#00FF00';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+
+                const step = w / (this.maxPoints - 1);
+                this.data.forEach((v, i) => {
+                    const x = i * step;
+                    const y = h - (Math.min(v, 100) / 100 * h);
+                    if (i === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                });
+                ctx.stroke();
+
+                // Draw glow effect
+                ctx.shadowColor = '#00FF00';
+                ctx.shadowBlur = 5;
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+
+                // Draw current value
+                if (this.data.length > 0) {
+                    const lastVal = this.data[this.data.length - 1];
+                    ctx.fillStyle = '#00FF00';
+                    ctx.font = 'bold 12px Menlo, monospace';
+                    ctx.textAlign = 'right';
+                    ctx.fillText(`${lastVal.toFixed(1)}%`, w - 5, 15);
+                }
+            }
+        };
+
+        // Hand Log
+        const HandLog = {
+            entries: [],
+
+            add(entry) {
+                this.entries.push({
+                    timestamp: new Date().toISOString(),
+                    holeCards: entry.hole_cards?.join('') || entry.holeCards || '',
+                    board: entry.community_cards?.join('') || entry.board || '',
+                    pot: entry.pot_size || entry.pot || 0,
+                    equity: entry.equity || 0,
+                    action: entry.action || '',
+                    result: entry.result || ''
+                });
+                this.render();
+            },
+
+            render() {
+                const el = document.getElementById('hand-log');
+                if (!el) return;
+                const recent = this.entries.slice(-5).reverse();
+                el.innerHTML = recent.map(e =>
+                    `<div class="log-entry">
+                        <span class="log-cards">${e.holeCards || '--'}</span>
+                        <span class="log-equity">${e.equity ? e.equity + '%' : '--'}</span>
+                        <span class="log-action">${e.action || '--'}</span>
+                    </div>`
+                ).join('');
+            },
+
+            exportCSV() {
+                if (this.entries.length === 0) {
+                    alert('No hands logged yet');
+                    return;
+                }
+
+                const headers = ['timestamp', 'holeCards', 'board', 'pot', 'equity', 'action', 'result'];
+                const rows = this.entries.map(e =>
+                    headers.map(h => String(e[h] || '')).join(',')
+                );
+                const csv = [headers.join(','), ...rows].join('\n');
+
+                const blob = new Blob([csv], { type: 'text/csv' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `poker-session-${Date.now()}.csv`;
+                a.click();
+                URL.revokeObjectURL(url);
+            }
+        };
+
+        function exportHandLog() {
+            HandLog.exportCSV();
+        }
+
+        // Initialize
+        async function init() {
+            HUD.video = document.getElementById('webcam');
+            HUD.canvas = document.getElementById('hud-overlay');
+            HUD.ctx = HUD.canvas.getContext('2d');
+
+            // Connect WebSocket
+            connectWebSocket();
+
+            // Setup webcam
+            setupWebcam();
+
+            // Initialize bet slider
+            initBetSlider();
+
+            // Initialize multi-table manager (enumerate cameras)
+            await MultiTableManager.init();
+
+            // Initialize news ticker
+            NewsTicker.init();
+
+            // Resize canvas
+            window.addEventListener('resize', () => {
+                resizeCanvas();
+                if (MultiTableManager.enabled) {
+                    MultiTableManager.resizeCanvases();
+                }
+            });
+            resizeCanvas();
+        }
+
+        function resizeCanvas() {
+            const video = HUD.video;
+            HUD.canvas.width = video.offsetWidth;
+            HUD.canvas.height = video.offsetHeight;
+        }
+
+        function connectWebSocket() {
+            const wsUrl = `ws://${window.location.hostname}:8000/ws/poker-stream`;
+            HUD.ws = new WebSocket(wsUrl);
+
+            HUD.ws.onopen = () => {
+                updateStatus('Connected', true);
+            };
+
+            HUD.ws.onclose = () => {
+                updateStatus('Disconnected', false);
+                setTimeout(connectWebSocket, 3000);
+            };
+
+            HUD.ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+            };
+
+            HUD.ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                handleMessage(data);
+            };
+        }
+
+        function updateStatus(text, connected) {
+            const status = document.getElementById('status');
+            status.textContent = text;
+            status.className = 'status' + (connected ? '' : ' disconnected');
+        }
+
+        function handleMessage(data) {
+            console.log('Received:', data);
+
+            switch (data.type) {
+                case 'connected':
+                    console.log('Poker HUD ready');
+                    break;
+
+                case 'table_state':
+                    // Check if this is for a specific table in multi-table mode
+                    if (MultiTableManager.enabled && typeof data.table_id === 'number') {
+                        MultiTableManager.handleTableState(data.table_id, data.data);
+                    } else {
+                        updateTableState(data.data);
+                    }
+                    break;
+
+                case 'ev_table':
+                    updateEVTable(data.data);
+                    break;
+
+                case 'vpip_stats':
+                    updateVPIPStats(data.data);
+                    break;
+
+                case 'error':
+                    console.error('Server error:', data.message);
+                    break;
+
+                case 'ocr_debug':
+                    // Physics Mode: Update OCR debug visualization
+                    if (PhysicsMode.enabled) {
+                        PhysicsMode.updateData(data.data);
+                    }
+                    break;
+
+                case 'villain_stats':
+                    // Update villain profile for a specific seat
+                    if (data.seat && data.data) {
+                        VillainTracker.updateProfile(data.seat, data.data);
+                    }
+                    break;
+
+                case 'villain_bulk':
+                    // Bulk update all villain profiles
+                    if (data.profiles) {
+                        Object.entries(data.profiles).forEach(([seat, profile]) => {
+                            VillainTracker.updateProfile(seat, profile);
+                        });
+                    }
+                    break;
+
+                case 'news_headlines':
+                    // Update news ticker with new headlines
+                    if (data.headlines) {
+                        NewsTicker.headlines = data.headlines;
+                        NewsTicker.render();
+                    }
+                    break;
+
+                case 'table_dynamics':
+                    // Update table dynamics analysis
+                    if (data.data) {
+                        updateTableDynamics(data.data);
+                    }
+                    break;
+            }
+        }
+
+        function updateTableDynamics(dynamics) {
+            // Update table type indicator if present
+            const tableType = document.getElementById('table-type');
+            if (tableType && dynamics.table_type) {
+                tableType.textContent = dynamics.table_type;
+            }
+
+            // Update aggression indicator
+            const aggressionEl = document.getElementById('table-aggression');
+            if (aggressionEl && dynamics.avg_aggression !== undefined) {
+                const aggLevel = dynamics.avg_aggression > 2.5 ? 'High' :
+                                dynamics.avg_aggression > 1.5 ? 'Medium' : 'Low';
+                aggressionEl.textContent = `Aggression: ${aggLevel}`;
+            }
+        }
+
+        function updateTableState(state) {
+            // Update hole cards
+            const holeCards = state.hole_cards || [];
+            document.getElementById('hole-cards').innerHTML = formatCards(holeCards);
+
+            // Update board
+            const board = state.community_cards || [];
+            document.getElementById('board-cards').innerHTML = board.length > 0 ? formatCards(board) : '--';
+
+            // Track pot size for slider calculations
+            if (state.pot_size) {
+                HUD.currentPot = state.pot_size;
+                const slider = document.getElementById('bet-slider');
+                if (slider) {
+                    updateSliderDisplay(parseFloat(slider.value));
+                }
+            }
+
+            // Draw HUD overlay
+            drawHUDOverlay(state);
+        }
+
+        function formatCards(cards) {
+            if (!cards || cards.length === 0) return '--';
+            return cards.map(card => {
+                const rank = card[0];
+                const suit = card[1];
+                const suitClass = 'suit-' + suit;
+                const suitSymbol = { 'h': '\u2665', 'd': '\u2666', 'c': '\u2663', 's': '\u2660' }[suit] || suit;
+                return `<span class="${suitClass}">${rank}${suitSymbol}</span>`;
+            }).join(' ');
+        }
+
+        function updateEVTable(data) {
+            // Update equity
+            document.getElementById('equity-value').textContent = data.equity || '--';
+            document.getElementById('equity-fill').style.width = (data.equity || 0) + '%';
+
+            // Update recommendation
+            const shouldCall = data.should_call;
+            let action = '--';
+            if (shouldCall === true) action = 'CALL';
+            else if (shouldCall === false) action = 'FOLD';
+            else if (data.equity > 65) action = 'BET';
+            else if (data.equity > 45) action = 'CHECK';
+
+            document.getElementById('recommendation-action').textContent = action;
+            document.getElementById('recommendation-text').textContent = data.recommendation || '';
+
+            // Update EV table
+            const tbody = document.getElementById('ev-table-body');
+            const evBySize = data.ev_by_size || {};
+            const optimal = evBySize.optimal?.size || '';
+
+            let html = '';
+            const sizes = ['1/4', '1/3', '1/2', '2/3', '3/4', 'pot', '1.5x'];
+
+            for (const size of sizes) {
+                const ev = evBySize[size];
+                if (!ev) continue;
+
+                const isOptimal = size === optimal;
+                const evClass = ev.ev >= 0 ? 'ev-positive' : 'ev-negative';
+
+                html += `<tr class="${isOptimal ? 'optimal' : ''}">
+                    <td>${size}${isOptimal ? ' *' : ''}</td>
+                    <td>$${ev.bet_amount}</td>
+                    <td class="${evClass}">${ev.ev >= 0 ? '+' : ''}$${ev.ev}</td>
+                </tr>`;
+            }
+
+            tbody.innerHTML = html || '<tr><td colspan="3">No data</td></tr>';
+
+            // Draw overlay
+            drawHUDOverlay({
+                equity: data.equity,
+                recommendation: action
+            });
+        }
+
+        function updateVPIPStats(stats) {
+            document.getElementById('vpip-value').textContent = stats.vpip || '--';
+            document.getElementById('vpip-leak').textContent = stats.leak || stats.recommendation || '';
+
+            // Add VPIP data point to chart
+            if (stats.vpip && typeof stats.vpip === 'number') {
+                VPIPChart.add(stats.vpip);
+            }
+        }
+
+        function drawHUDOverlay(data) {
+            const ctx = HUD.ctx;
+            const w = HUD.canvas.width;
+            const h = HUD.canvas.height;
+
+            // Clear canvas
+            ctx.clearRect(0, 0, w, h);
+
+            if (!data || !data.equity) return;
+
+            // Draw equity badge (top-right corner of video)
+            const equity = data.equity || 0;
+            const recommendation = data.recommendation || '';
+
+            // Semi-transparent green background
+            ctx.fillStyle = 'rgba(0, 255, 0, 0.15)';
+            ctx.fillRect(w - 180, 20, 160, 80);
+
+            // Green border
+            ctx.strokeStyle = '#00FF00';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(w - 180, 20, 160, 80);
+
+            // Equity text
+            ctx.font = 'bold 32px Menlo, monospace';
+            ctx.fillStyle = '#00FF00';
+            ctx.textAlign = 'center';
+            ctx.fillText(`${equity.toFixed(0)}%`, w - 100, 60);
+
+            // Action text
+            ctx.font = 'bold 16px Menlo, monospace';
+            ctx.fillText(recommendation, w - 100, 85);
+
+            // Draw scanlines for AR effect
+            ctx.strokeStyle = 'rgba(0, 255, 0, 0.05)';
+            ctx.lineWidth = 1;
+            for (let y = 0; y < h; y += 4) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(w, y);
+                ctx.stroke();
+            }
+        }
+
+        async function setupWebcam() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'environment', width: 1280, height: 720 }
+                });
+                HUD.video.srcObject = stream;
+            } catch (err) {
+                console.error('Webcam error:', err);
+                updateStatus('Webcam unavailable', false);
+            }
+        }
+
+        function toggleStream() {
+            const btn = document.getElementById('btn-stream');
+
+            if (HUD.streaming) {
+                // Stop streaming
+                HUD.streaming = false;
+                clearInterval(HUD.frameInterval);
+                btn.textContent = 'Start Stream';
+                btn.classList.remove('active');
+
+                // Stop multi-table streaming if enabled
+                if (MultiTableManager.enabled) {
+                    MultiTableManager.stopAllStreaming();
+                }
+
+                if (HUD.ws && HUD.ws.readyState === WebSocket.OPEN) {
+                    HUD.ws.send(JSON.stringify({ type: 'stop_stream' }));
+                }
+            } else {
+                // Start streaming
+                HUD.streaming = true;
+                btn.textContent = 'Stop Stream';
+                btn.classList.add('active');
+
+                if (HUD.ws && HUD.ws.readyState === WebSocket.OPEN) {
+                    HUD.ws.send(JSON.stringify({ type: 'start_stream' }));
+                }
+
+                // Start multi-table streaming if enabled
+                if (MultiTableManager.enabled) {
+                    MultiTableManager.startAllStreaming();
+                } else {
+                    // Single table mode - capture and send frames at 5fps
+                    HUD.frameInterval = setInterval(captureAndSendFrame, 200);
+                }
+            }
+        }
+
+        function captureAndSendFrame() {
+            if (!HUD.ws || HUD.ws.readyState !== WebSocket.OPEN) return;
+            if (!HUD.video.videoWidth) return;
+
+            // Create temp canvas to capture frame
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = 640;  // Lower res for OCR
+            tempCanvas.height = 360;
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCtx.drawImage(HUD.video, 0, 0, tempCanvas.width, tempCanvas.height);
+
+            // Convert to base64 and send
+            const imageData = tempCanvas.toDataURL('image/jpeg', 0.7);
+            HUD.ws.send(JSON.stringify({
+                type: 'frame',
+                image: imageData
+            }));
+        }
+
+        function sendManualInput() {
+            if (!HUD.ws || HUD.ws.readyState !== WebSocket.OPEN) return;
+
+            const holeCards = document.getElementById('input-hole').value;
+            const board = document.getElementById('input-board').value;
+            const pot = parseFloat(document.getElementById('input-pot').value) || 0;
+            const bet = parseFloat(document.getElementById('input-bet').value) || 0;
+
+            HUD.ws.send(JSON.stringify({
+                type: 'manual_input',
+                hole_cards: holeCards,
+                board: board,
+                pot: pot,
+                bet: bet
+            }));
+        }
+
+        function requestVPIPStats() {
+            if (!HUD.ws || HUD.ws.readyState !== WebSocket.OPEN) return;
+            HUD.ws.send(JSON.stringify({ type: 'get_vpip_stats' }));
+        }
+
+        function toggleFullscreen() {
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                document.documentElement.requestFullscreen();
+            }
+        }
+
+        // ===== Calibration Functions =====
+        let calibrationState = {
+            active: false,
+            startX: 0,
+            startY: 0,
+            region: null
+        };
+
+        function startCalibration() {
+            const overlay = document.getElementById('calibration-overlay');
+            const btn = document.getElementById('btn-calibrate');
+
+            calibrationState.active = true;
+            overlay.classList.add('active');
+            btn.classList.add('calibrating');
+            btn.textContent = 'Click Pot Area...';
+
+            // Hide instructions after first click starts
+            document.getElementById('calibration-instructions').style.display = 'block';
+        }
+
+        function handleCalibrationClick(event) {
+            if (!calibrationState.active) return;
+
+            const overlay = document.getElementById('calibration-overlay');
+            const box = document.getElementById('calibration-box');
+            const instructions = document.getElementById('calibration-instructions');
+
+            if (!calibrationState.startX) {
+                // First click - start of region
+                calibrationState.startX = event.clientX;
+                calibrationState.startY = event.clientY;
+                instructions.innerHTML = 'Now click the bottom-right corner of the pot area<br><small style="color: rgba(0,255,0,0.6)">Press ESC to cancel</small>';
+
+                box.style.left = event.clientX + 'px';
+                box.style.top = event.clientY + 'px';
+                box.style.width = '0px';
+                box.style.height = '0px';
+                box.style.display = 'block';
+            } else {
+                // Second click - end of region
+                const endX = event.clientX;
+                const endY = event.clientY;
+
+                calibrationState.region = {
+                    x: Math.min(calibrationState.startX, endX),
+                    y: Math.min(calibrationState.startY, endY),
+                    width: Math.abs(endX - calibrationState.startX),
+                    height: Math.abs(endY - calibrationState.startY)
+                };
+
+                // Send calibration to backend
+                if (HUD.ws && HUD.ws.readyState === WebSocket.OPEN) {
+                    HUD.ws.send(JSON.stringify({
+                        type: 'calibrate',
+                        target: 'pot',
+                        region: calibrationState.region
+                    }));
+                }
+
+                endCalibration('Pot region calibrated!');
+            }
+        }
+
+        function endCalibration(message) {
+            const overlay = document.getElementById('calibration-overlay');
+            const box = document.getElementById('calibration-box');
+            const btn = document.getElementById('btn-calibrate');
+
+            calibrationState.active = false;
+            calibrationState.startX = 0;
+            calibrationState.startY = 0;
+
+            overlay.classList.remove('active');
+            box.style.display = 'none';
+            btn.classList.remove('calibrating');
+            btn.textContent = 'Calibrate Pot';
+
+            if (message) {
+                console.log('Calibration:', message);
+            }
+        }
+
+        // ESC key to cancel calibration
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && calibrationState.active) {
+                endCalibration('Calibration cancelled');
+            }
+        });
+
+        // ===== PokerTable Class - Independent State Per Table =====
+        class PokerTable {
+            constructor(index, deviceId = null) {
+                this.index = index;
+                this.deviceId = deviceId;
+                this.stream = null;
+                this.video = null;
+                this.canvas = null;
+                this.ctx = null;
+                this.frameInterval = null;
+                this.streaming = false;
+
+                // Independent game state
+                this.state = {
+                    holeCards: [],
+                    boardCards: [],
+                    pot: 0,
+                    equity: 0,
+                    recommendation: '',
+                    vpip: 0,
+                    handsPlayed: 0,
+                    lastUpdate: null
+                };
+            }
+
+            async initCamera(deviceId) {
+                try {
+                    this.deviceId = deviceId;
+                    this.stream = await navigator.mediaDevices.getUserMedia({
+                        video: {
+                            deviceId: deviceId ? { exact: deviceId } : undefined,
+                            width: { ideal: 1280 },
+                            height: { ideal: 720 }
+                        }
+                    });
+                    if (this.video) {
+                        this.video.srcObject = this.stream;
+                    }
+                    return true;
+                } catch (err) {
+                    console.error(`Table ${this.index + 1} camera error:`, err);
+                    return false;
+                }
+            }
+
+            startStreaming() {
+                if (this.streaming || !this.stream) return;
+                this.streaming = true;
+                this.frameInterval = setInterval(() => this.captureFrame(), 200);
+            }
+
+            stopStreaming() {
+                if (!this.streaming) return;
+                this.streaming = false;
+                if (this.frameInterval) {
+                    clearInterval(this.frameInterval);
+                    this.frameInterval = null;
+                }
+            }
+
+            captureFrame() {
+                if (!this.video || !this.video.videoWidth) return;
+                if (!HUD.ws || HUD.ws.readyState !== WebSocket.OPEN) return;
+
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = 640;
+                tempCanvas.height = 360;
+                const tempCtx = tempCanvas.getContext('2d');
+                tempCtx.drawImage(this.video, 0, 0, tempCanvas.width, tempCanvas.height);
+
+                const imageData = tempCanvas.toDataURL('image/jpeg', 0.7);
+                HUD.ws.send(JSON.stringify({
+                    type: 'frame',
+                    table_id: this.index,
+                    image: imageData
+                }));
+            }
+
+            updateState(data) {
+                this.state.holeCards = data.hole_cards || this.state.holeCards;
+                this.state.boardCards = data.community_cards || this.state.boardCards;
+                this.state.pot = data.pot_size || this.state.pot;
+                this.state.equity = data.equity || this.state.equity;
+                this.state.recommendation = data.recommendation || this.state.recommendation;
+                this.state.lastUpdate = Date.now();
+                this.drawMiniHUD();
+            }
+
+            drawMiniHUD() {
+                if (!this.ctx) return;
+                const w = this.canvas.width;
+                const h = this.canvas.height;
+                const s = this.state;
+
+                this.ctx.clearRect(0, 0, w, h);
+
+                // Draw equity badge
+                if (s.equity > 0) {
+                    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+                    this.ctx.fillRect(w - 100, 10, 90, 60);
+                    this.ctx.strokeStyle = '#00FF00';
+                    this.ctx.lineWidth = 2;
+                    this.ctx.strokeRect(w - 100, 10, 90, 60);
+
+                    this.ctx.font = 'bold 24px Menlo, monospace';
+                    this.ctx.fillStyle = '#00FF00';
+                    this.ctx.textAlign = 'center';
+                    this.ctx.fillText(`${s.equity.toFixed(0)}%`, w - 55, 45);
+
+                    if (s.recommendation) {
+                        this.ctx.font = 'bold 11px Menlo, monospace';
+                        this.ctx.fillStyle = '#FFFF00';
+                        this.ctx.fillText(s.recommendation, w - 55, 62);
+                    }
+                }
+
+                // Draw cards if available
+                if (s.holeCards && s.holeCards.length > 0) {
+                    this.ctx.font = '12px Menlo, monospace';
+                    this.ctx.fillStyle = '#00FF00';
+                    this.ctx.textAlign = 'left';
+                    this.ctx.fillText(s.holeCards.join(' '), 10, h - 10);
+                }
+            }
+
+            destroy() {
+                this.stopStreaming();
+                if (this.stream) {
+                    this.stream.getTracks().forEach(t => t.stop());
+                    this.stream = null;
+                }
+            }
+        }
+
+        // ===== Multi-Table Manager =====
+        const MultiTableManager = {
+            enabled: false,
+            tables: [],
+            activeTableIndex: 0,
+            tableCount: 1,
+            availableCameras: [],
+
+            async init() {
+                // Enumerate available cameras
+                try {
+                    const devices = await navigator.mediaDevices.enumerateDevices();
+                    this.availableCameras = devices.filter(d => d.kind === 'videoinput');
+                    console.log(`Found ${this.availableCameras.length} cameras`);
+                } catch (err) {
+                    console.error('Failed to enumerate cameras:', err);
+                }
+            },
+
+            async enable(count = 2) {
+                if (count > this.availableCameras.length) {
+                    alert(`Only ${this.availableCameras.length} camera(s) found. Need ${count} for multi-table.`);
+                    return false;
+                }
+
+                this.tableCount = Math.min(count, 4);
+                this.enabled = true;
+
+                // Create table instances
+                this.tables = [];
+                for (let i = 0; i < this.tableCount; i++) {
+                    const table = new PokerTable(i, this.availableCameras[i]?.deviceId);
+                    this.tables.push(table);
+                }
+
+                // Build UI
+                this.buildMultiTableUI();
+
+                // Initialize cameras for each table
+                for (let i = 0; i < this.tables.length; i++) {
+                    const camera = this.availableCameras[i];
+                    if (camera) {
+                        await this.tables[i].initCamera(camera.deviceId);
+                    }
+                }
+
+                // Show multi-table container, hide single
+                document.getElementById('single-table-container').style.display = 'none';
+                const mtc = document.getElementById('multi-table-container');
+                mtc.classList.add('active');
+                mtc.classList.remove('tables-2', 'tables-3', 'tables-4');
+                mtc.classList.add(`tables-${this.tableCount}`);
+
+                // Notify backend
+                if (HUD.ws && HUD.ws.readyState === WebSocket.OPEN) {
+                    HUD.ws.send(JSON.stringify({
+                        type: 'multi_table',
+                        enabled: true,
+                        tables: this.tableCount
+                    }));
+                }
+
+                this.updateButton();
+                return true;
+            },
+
+            disable() {
+                // Stop and destroy all tables
+                this.tables.forEach(t => t.destroy());
+                this.tables = [];
+                this.enabled = false;
+                this.tableCount = 1;
+
+                // Clear multi-table container
+                const mtc = document.getElementById('multi-table-container');
+                mtc.classList.remove('active', 'tables-2', 'tables-3', 'tables-4');
+                mtc.innerHTML = '';
+
+                // Show single table container
+                document.getElementById('single-table-container').style.display = 'flex';
+
+                // Notify backend
+                if (HUD.ws && HUD.ws.readyState === WebSocket.OPEN) {
+                    HUD.ws.send(JSON.stringify({
+                        type: 'multi_table',
+                        enabled: false,
+                        tables: 1
+                    }));
+                }
+
+                this.updateButton();
+            },
+
+            buildMultiTableUI() {
+                const container = document.getElementById('multi-table-container');
+                container.innerHTML = '';
+
+                for (let i = 0; i < this.tableCount; i++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'table-cell' + (i === this.activeTableIndex ? ' focused' : '');
+                    cell.id = `table-cell-${i}`;
+                    cell.onclick = () => this.focusTable(i);
+
+                    // Video element
+                    const video = document.createElement('video');
+                    video.id = `video-${i}`;
+                    video.autoplay = true;
+                    video.playsinline = true;
+                    video.muted = true;
+                    cell.appendChild(video);
+
+                    // Canvas overlay
+                    const canvas = document.createElement('canvas');
+                    canvas.id = `canvas-${i}`;
+                    cell.appendChild(canvas);
+
+                    // Table indicator
+                    const indicator = document.createElement('div');
+                    indicator.className = 'table-indicator' + (i === this.activeTableIndex ? ' active' : '');
+                    indicator.textContent = `Table ${i + 1}`;
+                    indicator.onclick = (e) => {
+                        e.stopPropagation();
+                        this.showCameraSelector(i);
+                    };
+                    cell.appendChild(indicator);
+
+                    // Mini HUD
+                    const miniHud = document.createElement('div');
+                    miniHud.className = 'mini-hud';
+                    miniHud.id = `mini-hud-${i}`;
+                    miniHud.innerHTML = `
+                        <div class="equity-display" id="equity-${i}">--%</div>
+                        <div class="cards-mini" id="cards-${i}">--</div>
+                        <div class="action-mini" id="action-${i}"></div>
+                    `;
+                    cell.appendChild(miniHud);
+
+                    // Camera selector dropdown
+                    const selector = document.createElement('div');
+                    selector.className = 'camera-selector';
+                    selector.id = `camera-selector-${i}`;
+                    const select = document.createElement('select');
+                    select.id = `camera-select-${i}`;
+                    this.availableCameras.forEach((cam, idx) => {
+                        const opt = document.createElement('option');
+                        opt.value = cam.deviceId;
+                        opt.textContent = cam.label || `Camera ${idx + 1}`;
+                        if (this.tables[i]?.deviceId === cam.deviceId) opt.selected = true;
+                        select.appendChild(opt);
+                    });
+                    select.onchange = (e) => this.changeCameraForTable(i, e.target.value);
+                    selector.appendChild(select);
+                    cell.appendChild(selector);
+
+                    container.appendChild(cell);
+
+                    // Link video/canvas to table instance
+                    if (this.tables[i]) {
+                        this.tables[i].video = video;
+                        this.tables[i].canvas = canvas;
+                        this.tables[i].ctx = canvas.getContext('2d');
+                        if (this.tables[i].stream) {
+                            video.srcObject = this.tables[i].stream;
+                        }
+                    }
+                }
+
+                // Resize canvases
+                setTimeout(() => this.resizeCanvases(), 100);
+            },
+
+            resizeCanvases() {
+                for (let i = 0; i < this.tableCount; i++) {
+                    const video = document.getElementById(`video-${i}`);
+                    const canvas = document.getElementById(`canvas-${i}`);
+                    if (video && canvas) {
+                        canvas.width = video.offsetWidth || 400;
+                        canvas.height = video.offsetHeight || 300;
+                    }
+                }
+            },
+
+            focusTable(index) {
+                this.activeTableIndex = index;
+
+                // Update UI focus
+                document.querySelectorAll('.table-cell').forEach((cell, i) => {
+                    cell.classList.toggle('focused', i === index);
+                });
+                document.querySelectorAll('.table-indicator').forEach((ind, i) => {
+                    ind.classList.toggle('active', i === index);
+                });
+
+                // Update EV panel with focused table's data
+                if (this.tables[index]) {
+                    this.syncEVPanelWithTable(this.tables[index]);
+                }
+
+                console.log(`Focused on Table ${index + 1}`);
+            },
+
+            syncEVPanelWithTable(table) {
+                const s = table.state;
+                document.getElementById('hole-cards').innerHTML = formatCards(s.holeCards);
+                document.getElementById('board-cards').innerHTML = s.boardCards.length > 0 ? formatCards(s.boardCards) : '--';
+                document.getElementById('equity-value').textContent = s.equity > 0 ? s.equity.toFixed(0) : '--';
+                document.getElementById('equity-fill').style.width = (s.equity || 0) + '%';
+                HUD.currentPot = s.pot;
+            },
+
+            showCameraSelector(tableIndex) {
+                // Hide all selectors first
+                document.querySelectorAll('.camera-selector').forEach(s => s.classList.remove('visible'));
+                // Show this one
+                const selector = document.getElementById(`camera-selector-${tableIndex}`);
+                if (selector) {
+                    selector.classList.add('visible');
+                    // Hide on click outside
+                    setTimeout(() => {
+                        document.addEventListener('click', function hide(e) {
+                            if (!selector.contains(e.target)) {
+                                selector.classList.remove('visible');
+                                document.removeEventListener('click', hide);
+                            }
+                        });
+                    }, 100);
+                }
+            },
+
+            async changeCameraForTable(tableIndex, deviceId) {
+                const table = this.tables[tableIndex];
+                if (!table) return;
+
+                // Stop old stream
+                if (table.stream) {
+                    table.stream.getTracks().forEach(t => t.stop());
+                }
+
+                // Start new camera
+                const success = await table.initCamera(deviceId);
+                if (success) {
+                    const video = document.getElementById(`video-${tableIndex}`);
+                    if (video) video.srcObject = table.stream;
+                    console.log(`Table ${tableIndex + 1} camera changed`);
+                }
+
+                // Hide selector
+                const selector = document.getElementById(`camera-selector-${tableIndex}`);
+                if (selector) selector.classList.remove('visible');
+            },
+
+            startAllStreaming() {
+                this.tables.forEach(t => t.startStreaming());
+            },
+
+            stopAllStreaming() {
+                this.tables.forEach(t => t.stopStreaming());
+            },
+
+            handleTableState(tableId, data) {
+                const table = this.tables[tableId];
+                if (!table) return;
+
+                table.updateState(data);
+
+                // Update mini HUD
+                const equityEl = document.getElementById(`equity-${tableId}`);
+                const cardsEl = document.getElementById(`cards-${tableId}`);
+                const actionEl = document.getElementById(`action-${tableId}`);
+
+                if (equityEl) equityEl.textContent = `${(data.equity || 0).toFixed(0)}%`;
+                if (cardsEl) cardsEl.textContent = (data.hole_cards || []).join(' ') || '--';
+                if (actionEl) actionEl.textContent = data.recommendation || '';
+
+                // If this is the focused table, sync main panel
+                if (tableId === this.activeTableIndex) {
+                    this.syncEVPanelWithTable(table);
+                }
+            },
+
+            updateButton() {
+                const btn = document.getElementById('btn-multitable');
+                if (this.enabled) {
+                    btn.classList.add('active');
+                    btn.textContent = `${this.tableCount} Tables`;
+                } else {
+                    btn.classList.remove('active');
+                    btn.textContent = 'Multi-Table';
+                }
+            }
+        };
+
+        // ===== Multi-Table Toggle Function =====
+        async function toggleMultiTable() {
+            if (MultiTableManager.enabled) {
+                MultiTableManager.disable();
+            } else {
+                // Show table count selector
+                const count = prompt('How many tables? (2-4)', '2');
+                const numTables = parseInt(count) || 2;
+                if (numTables >= 2 && numTables <= 4) {
+                    await MultiTableManager.enable(numTables);
+                }
+            }
+        }
+
+        function switchTable(tableIndex) {
+            MultiTableManager.focusTable(tableIndex);
+        }
+
+        // ===== Physics Mode (OCR Debug) =====
+        const PhysicsMode = {
+            enabled: false,
+            overlay: null,
+            debugPanel: null,
+            lastFrameTime: 0,
+            frameCount: 0,
+            fps: 0,
+            fpsUpdateInterval: null,
+
+            // OCR debug data
+            data: {
+                cards: [],          // Detected card bounding boxes
+                pot: null,          // Pot region bounding box
+                players: [],        // Player position boxes
+                confidence: 0,      // Overall OCR confidence
+                latency: 0,         // Processing latency in ms
+                frameSize: { w: 0, h: 0 }
+            },
+
+            init() {
+                this.overlay = document.getElementById('physics-overlay');
+                this.debugPanel = document.getElementById('physics-debug-panel');
+            },
+
+            enable() {
+                this.enabled = true;
+                this.init();
+
+                // Show overlay and panel
+                if (this.overlay) this.overlay.classList.add('active');
+                if (this.debugPanel) this.debugPanel.classList.add('active');
+
+                // Start FPS counter
+                this.startFPSCounter();
+
+                // Update button state
+                const btn = document.getElementById('btn-physics');
+                if (btn) {
+                    btn.classList.add('active');
+                    btn.textContent = 'Physics: ON';
+                }
+
+                // Request OCR debug mode from backend
+                if (HUD.ws && HUD.ws.readyState === WebSocket.OPEN) {
+                    HUD.ws.send(JSON.stringify({
+                        type: 'ocr_debug_mode',
+                        enabled: true
+                    }));
+                }
+
+                console.log('Physics Mode enabled');
+            },
+
+            disable() {
+                this.enabled = false;
+
+                // Hide overlay and panel
+                if (this.overlay) {
+                    this.overlay.classList.remove('active');
+                    this.overlay.innerHTML = '';
+                }
+                if (this.debugPanel) this.debugPanel.classList.remove('active');
+
+                // Stop FPS counter
+                this.stopFPSCounter();
+
+                // Update button state
+                const btn = document.getElementById('btn-physics');
+                if (btn) {
+                    btn.classList.remove('active');
+                    btn.textContent = 'Physics Mode';
+                }
+
+                // Notify backend
+                if (HUD.ws && HUD.ws.readyState === WebSocket.OPEN) {
+                    HUD.ws.send(JSON.stringify({
+                        type: 'ocr_debug_mode',
+                        enabled: false
+                    }));
+                }
+
+                console.log('Physics Mode disabled');
+            },
+
+            startFPSCounter() {
+                this.frameCount = 0;
+                this.lastFrameTime = performance.now();
+
+                this.fpsUpdateInterval = setInterval(() => {
+                    const now = performance.now();
+                    const elapsed = (now - this.lastFrameTime) / 1000;
+                    this.fps = Math.round(this.frameCount / elapsed);
+                    this.frameCount = 0;
+                    this.lastFrameTime = now;
+                    this.updateDebugPanel();
+                }, 1000);
+            },
+
+            stopFPSCounter() {
+                if (this.fpsUpdateInterval) {
+                    clearInterval(this.fpsUpdateInterval);
+                    this.fpsUpdateInterval = null;
+                }
+            },
+
+            recordFrame() {
+                this.frameCount++;
+            },
+
+            updateData(ocrDebug) {
+                this.data.cards = ocrDebug.cards || [];
+                this.data.pot = ocrDebug.pot || null;
+                this.data.players = ocrDebug.players || [];
+                this.data.confidence = ocrDebug.confidence || 0;
+                this.data.latency = ocrDebug.latency || 0;
+                this.data.frameSize = ocrDebug.frame_size || { w: 640, h: 360 };
+
+                this.recordFrame();
+                this.renderOverlay();
+                this.updateDebugPanel();
+            },
+
+            updateDebugPanel() {
+                if (!this.debugPanel) return;
+
+                // Update FPS
+                const fpsEl = document.getElementById('debug-fps');
+                if (fpsEl) fpsEl.textContent = this.fps;
+
+                // Update latency
+                const latencyEl = document.getElementById('debug-latency');
+                if (latencyEl) latencyEl.textContent = this.data.latency;
+
+                // Update cards found
+                const cardsEl = document.getElementById('debug-cards');
+                if (cardsEl) cardsEl.textContent = this.data.cards.length;
+
+                // Update confidence
+                const confEl = document.getElementById('debug-confidence');
+                if (confEl) {
+                    confEl.textContent = (this.data.confidence * 100).toFixed(0) + '%';
+                    // Color code confidence
+                    confEl.parentElement.className = 'debug-row';
+                    if (this.data.confidence >= 0.8) {
+                        confEl.parentElement.classList.add('confidence-high');
+                    } else if (this.data.confidence >= 0.5) {
+                        confEl.parentElement.classList.add('confidence-medium');
+                    } else {
+                        confEl.parentElement.classList.add('confidence-low');
+                    }
+                }
+
+                // Update pot detection
+                const potEl = document.getElementById('debug-pot');
+                if (potEl) {
+                    potEl.textContent = this.data.pot ? 'Yes' : 'No';
+                    potEl.style.color = this.data.pot ? '#00FF00' : '#FF6600';
+                }
+
+                // Update frame size
+                const frameEl = document.getElementById('debug-frame');
+                if (frameEl) {
+                    frameEl.textContent = `${this.data.frameSize.w}x${this.data.frameSize.h}`;
+                }
+            },
+
+            renderOverlay() {
+                if (!this.overlay || !this.enabled) return;
+
+                // Clear previous boxes
+                this.overlay.innerHTML = '';
+
+                // Get video dimensions for scaling
+                const video = HUD.video;
+                if (!video) return;
+
+                const videoRect = video.getBoundingClientRect();
+                const scaleX = videoRect.width / this.data.frameSize.w;
+                const scaleY = videoRect.height / this.data.frameSize.h;
+
+                // Render card bounding boxes
+                this.data.cards.forEach((card, idx) => {
+                    const box = this.createBoundingBox(card, scaleX, scaleY, 'card');
+
+                    // Add label
+                    const label = document.createElement('div');
+                    label.className = 'bbox-label';
+                    label.textContent = card.label || `Card ${idx + 1}`;
+                    if (card.confidence) {
+                        label.textContent += ` (${(card.confidence * 100).toFixed(0)}%)`;
+                    }
+                    box.appendChild(label);
+
+                    this.overlay.appendChild(box);
+                });
+
+                // Render pot bounding box
+                if (this.data.pot) {
+                    const potBox = this.createBoundingBox(this.data.pot, scaleX, scaleY, 'pot');
+
+                    const label = document.createElement('div');
+                    label.className = 'bbox-label';
+                    label.textContent = this.data.pot.value ? `$${this.data.pot.value}` : 'POT';
+                    potBox.appendChild(label);
+
+                    this.overlay.appendChild(potBox);
+                }
+
+                // Render player position boxes
+                this.data.players.forEach((player, idx) => {
+                    const playerBox = this.createBoundingBox(player, scaleX, scaleY, 'player');
+
+                    const label = document.createElement('div');
+                    label.className = 'bbox-label';
+                    label.textContent = player.position || `P${idx + 1}`;
+                    playerBox.appendChild(label);
+
+                    this.overlay.appendChild(playerBox);
+                });
+
+                // Add confidence indicator
+                const confIndicator = document.createElement('div');
+                confIndicator.className = 'confidence-indicator';
+                if (this.data.confidence >= 0.8) {
+                    confIndicator.classList.add('high');
+                } else if (this.data.confidence >= 0.5) {
+                    confIndicator.classList.add('medium');
+                } else {
+                    confIndicator.classList.add('low');
+                }
+                confIndicator.style.position = 'absolute';
+                confIndicator.style.top = '10px';
+                confIndicator.style.left = '10px';
+                confIndicator.style.width = '12px';
+                confIndicator.style.height = '12px';
+                confIndicator.style.borderRadius = '50%';
+                this.overlay.appendChild(confIndicator);
+            },
+
+            createBoundingBox(rect, scaleX, scaleY, type) {
+                const box = document.createElement('div');
+                box.className = `ocr-bbox ${type}`;
+
+                // Apply scaled position and size
+                box.style.left = (rect.x * scaleX) + 'px';
+                box.style.top = (rect.y * scaleY) + 'px';
+                box.style.width = (rect.w * scaleX) + 'px';
+                box.style.height = (rect.h * scaleY) + 'px';
+
+                return box;
+            }
+        };
+
+        function togglePhysicsMode() {
+            if (PhysicsMode.enabled) {
+                PhysicsMode.disable();
+            } else {
+                PhysicsMode.enable();
+            }
+        }
+
+        // ===== Villain Tracking =====
+        const VillainTracker = {
+            profiles: {},
+            selectedSeat: null,
+
+            updateProfile(seat, data) {
+                this.profiles[seat] = data;
+                // Update dropdown options if new seat
+                this.updateSeatOptions();
+                // If this is the selected seat, refresh display
+                if (seat === this.selectedSeat) {
+                    this.displayProfile(data);
+                }
+            },
+
+            updateAllProfiles(profiles) {
+                // profiles is array of {seat, vpip, pfr, ...}
+                profiles.forEach(p => {
+                    this.profiles[p.seat] = p;
+                });
+                this.updateSeatOptions();
+                if (this.selectedSeat && this.profiles[this.selectedSeat]) {
+                    this.displayProfile(this.profiles[this.selectedSeat]);
+                }
+            },
+
+            updateSeatOptions() {
+                const select = document.getElementById('villain-seat-select');
+                if (!select) return;
+
+                const currentValue = select.value;
+                const seats = Object.keys(this.profiles).sort();
+
+                // Keep existing options, add new ones
+                seats.forEach(seat => {
+                    if (!select.querySelector(`option[value="${seat}"]`)) {
+                        const opt = document.createElement('option');
+                        opt.value = seat;
+                        opt.textContent = seat;
+                        select.appendChild(opt);
+                    }
+                });
+
+                // Restore selection
+                if (currentValue) select.value = currentValue;
+            },
+
+            selectSeat(seat) {
+                this.selectedSeat = seat;
+                if (seat && this.profiles[seat]) {
+                    this.displayProfile(this.profiles[seat]);
+                    // Request fresh data from backend
+                    if (HUD.ws && HUD.ws.readyState === WebSocket.OPEN) {
+                        HUD.ws.send(JSON.stringify({
+                            type: 'get_villain_stats',
+                            seat: seat
+                        }));
+                    }
+                } else {
+                    this.clearDisplay();
+                }
+            },
+
+            displayProfile(p) {
+                document.getElementById('villain-vpip').textContent = p.vpip !== undefined ? p.vpip.toFixed(0) + '%' : '--';
+                document.getElementById('villain-pfr').textContent = p.pfr !== undefined ? p.pfr.toFixed(0) + '%' : '--';
+                document.getElementById('villain-agg').textContent = p.agg !== undefined ? p.agg.toFixed(1) : '--';
+                document.getElementById('villain-f2cb').textContent = p.f2cb !== undefined ? p.f2cb.toFixed(0) + '%' : '--';
+
+                document.getElementById('villain-type').textContent = p.type || 'Unknown';
+                document.getElementById('villain-range').textContent = p.range || 'Insufficient data';
+                document.getElementById('villain-actions').textContent = p.actions || '-- -- -- -- --';
+
+                // Display exploitation tip
+                const tipEl = document.getElementById('villain-tip');
+                if (p.tips && p.tips.length > 0) {
+                    tipEl.textContent = '💡 ' + p.tips[0];
+                    tipEl.style.display = 'block';
+                } else {
+                    tipEl.style.display = 'none';
+                }
+            },
+
+            clearDisplay() {
+                document.getElementById('villain-vpip').textContent = '--';
+                document.getElementById('villain-pfr').textContent = '--';
+                document.getElementById('villain-agg').textContent = '--';
+                document.getElementById('villain-f2cb').textContent = '--';
+                document.getElementById('villain-type').textContent = 'No data';
+                document.getElementById('villain-range').textContent = 'Select a seat to view stats';
+                document.getElementById('villain-actions').textContent = '-- -- -- -- --';
+                document.getElementById('villain-tip').style.display = 'none';
+            }
+        };
+
+        function selectVillainSeat(seat) {
+            VillainTracker.selectSeat(seat);
+        }
+
+        // ===== News Ticker =====
+        const NewsTicker = {
+            headlines: [],
+            refreshInterval: null,
+
+            init() {
+                // Request initial headlines
+                this.refresh();
+                // Refresh every 60 seconds
+                this.refreshInterval = setInterval(() => this.refresh(), 60000);
+            },
+
+            refresh() {
+                if (HUD.ws && HUD.ws.readyState === WebSocket.OPEN) {
+                    HUD.ws.send(JSON.stringify({
+                        type: 'get_news_headlines'
+                    }));
+                }
+            },
+
+            updateHeadlines(headlines) {
+                this.headlines = headlines;
+                this.render();
+            },
+
+            render() {
+                const container = document.getElementById('news-ticker-content');
+                if (!container) return;
+
+                if (this.headlines.length === 0) {
+                    container.innerHTML = '<span class="news-item">No news available</span>';
+                    return;
+                }
+
+                container.innerHTML = this.headlines.map(h =>
+                    `<span class="news-item ${h.category || 'general'}">${h.title}</span>`
+                ).join('');
+
+                // Duplicate for seamless scrolling
+                container.innerHTML += container.innerHTML;
+            },
+
+            addHeadline(headline) {
+                this.headlines.unshift(headline);
+                if (this.headlines.length > 10) {
+                    this.headlines = this.headlines.slice(0, 10);
+                }
+                this.render();
+            }
+        };
+
+        function toggleNewsTicker() {
+            const ticker = document.getElementById('news-ticker');
+            if (ticker) {
+                ticker.classList.toggle('collapsed');
+            }
+        }
+
+        // Initialize on load
+        window.addEventListener('load', init);
+    </script>
+</body>
+</html>

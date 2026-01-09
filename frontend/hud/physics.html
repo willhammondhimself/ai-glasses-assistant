@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WHAM Physics HUD - AR Glasses</title>
+    <!-- KaTeX for LaTeX rendering -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0a;
+            font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+            overflow: hidden;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        /* Main container */
+        .container {
+            display: flex;
+            height: 100vh;
+        }
+
+        /* Video feed (left side) */
+        .video-panel {
+            flex: 1;
+            position: relative;
+            background: #111;
+        }
+
+        #webcam {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        /* HUD overlay on video */
+        #hud-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        /* OCR detection boxes */
+        .ocr-box {
+            position: absolute;
+            border: 2px solid #00FFFF;
+            background: rgba(0, 255, 255, 0.1);
+            border-radius: 4px;
+            pointer-events: auto;
+            cursor: pointer;
+        }
+
+        .ocr-box:hover {
+            background: rgba(0, 255, 255, 0.2);
+        }
+
+        .ocr-label {
+            position: absolute;
+            top: -20px;
+            left: 0;
+            background: #00FFFF;
+            color: #000;
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 2px;
+        }
+
+        /* Solution panel (right side) */
+        .solution-panel {
+            width: 380px;
+            background: #000;
+            border-left: 1px solid #00FFFF;
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Cyan AR color scheme for physics */
+        .solution-panel h2 {
+            color: #00FFFF;
+            font-size: 16px;
+            margin-bottom: 15px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        /* Problem display */
+        .problem-display {
+            background: rgba(0, 255, 255, 0.05);
+            border: 1px solid rgba(0, 255, 255, 0.3);
+            border-radius: 4px;
+            padding: 16px;
+            margin-bottom: 15px;
+        }
+
+        .problem-label {
+            color: rgba(0, 255, 255, 0.6);
+            font-size: 10px;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }
+
+        .problem-math {
+            color: #00FFFF;
+            font-size: 20px;
+            font-weight: bold;
+            text-align: center;
+            padding: 10px;
+        }
+
+        /* Solution display */
+        .solution-display {
+            background: rgba(0, 255, 255, 0.1);
+            border: 2px solid #00FFFF;
+            border-radius: 4px;
+            padding: 16px;
+            margin-bottom: 15px;
+        }
+
+        .solution-label {
+            color: #00FFFF;
+            font-size: 12px;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+            letter-spacing: 1px;
+        }
+
+        .solution-math {
+            color: #FFFFFF;
+            font-size: 28px;
+            font-weight: bold;
+            text-align: center;
+            padding: 15px;
+        }
+
+        /* Steps display */
+        .steps-panel {
+            background: rgba(0, 255, 255, 0.05);
+            border: 1px solid rgba(0, 255, 255, 0.3);
+            border-radius: 4px;
+            padding: 16px;
+            margin-bottom: 15px;
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .steps-list {
+            list-style: none;
+        }
+
+        .step-item {
+            color: rgba(0, 255, 255, 0.9);
+            font-size: 13px;
+            padding: 10px 0;
+            border-bottom: 1px solid rgba(0, 255, 255, 0.1);
+            line-height: 1.6;
+        }
+
+        .step-item:last-child {
+            border-bottom: none;
+        }
+
+        .step-number {
+            color: #00FFFF;
+            font-weight: bold;
+            margin-right: 8px;
+        }
+
+        .step-math {
+            display: block;
+            margin-top: 5px;
+            padding-left: 20px;
+            color: #FFFFFF;
+        }
+
+        /* Graph display */
+        .graph-panel {
+            background: rgba(0, 255, 255, 0.05);
+            border: 1px solid rgba(0, 255, 255, 0.3);
+            border-radius: 4px;
+            padding: 12px;
+            margin-bottom: 15px;
+            display: none;
+        }
+
+        .graph-panel.active {
+            display: block;
+        }
+
+        #graph-canvas {
+            width: 100%;
+            height: 200px;
+            background: #111;
+            border-radius: 4px;
+        }
+
+        /* Controls */
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .btn {
+            flex: 1;
+            background: rgba(0, 255, 255, 0.1);
+            border: 1px solid #00FFFF;
+            color: #00FFFF;
+            padding: 12px;
+            font-family: inherit;
+            font-size: 12px;
+            text-transform: uppercase;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: all 0.2s ease;
+        }
+
+        .btn:hover {
+            background: rgba(0, 255, 255, 0.2);
+        }
+
+        .btn.active {
+            background: #00FFFF;
+            color: #000;
+        }
+
+        /* Formula library */
+        .formula-library {
+            background: rgba(0, 255, 255, 0.05);
+            border: 1px solid rgba(0, 255, 255, 0.3);
+            border-radius: 4px;
+            padding: 12px;
+            margin-bottom: 15px;
+        }
+
+        .formula-category {
+            color: #00FFFF;
+            font-size: 11px;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+            cursor: pointer;
+        }
+
+        .formula-item {
+            color: rgba(0, 255, 255, 0.7);
+            font-size: 12px;
+            padding: 4px 0;
+            cursor: pointer;
+        }
+
+        .formula-item:hover {
+            color: #00FFFF;
+        }
+
+        /* Status bar */
+        .status-bar {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            right: 10px;
+            display: flex;
+            justify-content: space-between;
+            color: rgba(0, 255, 255, 0.6);
+            font-size: 11px;
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #444;
+        }
+
+        .status-dot.connected {
+            background: #00FF00;
+        }
+
+        .status-dot.processing {
+            background: #FFFF00;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* Input field for manual equation entry */
+        .equation-input {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .equation-input input {
+            flex: 1;
+            background: #111;
+            border: 1px solid rgba(0, 255, 255, 0.3);
+            color: #00FFFF;
+            padding: 12px;
+            font-family: inherit;
+            font-size: 14px;
+            border-radius: 4px;
+        }
+
+        .equation-input input:focus {
+            outline: none;
+            border-color: #00FFFF;
+        }
+
+        .equation-input input::placeholder {
+            color: rgba(0, 255, 255, 0.4);
+        }
+
+        /* KaTeX styling */
+        .katex {
+            color: #FFFFFF;
+        }
+
+        .katex-display {
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Video Panel -->
+        <div class="video-panel">
+            <video id="webcam" autoplay playsinline muted></video>
+            <canvas id="hud-overlay"></canvas>
+
+            <!-- Status bar -->
+            <div class="status-bar">
+                <div class="status-item">
+                    <div class="status-dot" id="ws-status"></div>
+                    <span id="ws-label">Disconnected</span>
+                </div>
+                <div class="status-item">
+                    <span id="fps-counter">0 FPS</span>
+                </div>
+                <div class="status-item">
+                    <span id="latency">-- ms</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Solution Panel -->
+        <div class="solution-panel">
+            <h2>Physics Solver</h2>
+
+            <!-- Manual input -->
+            <div class="equation-input">
+                <input type="text" id="equation-input" placeholder="Type equation (e.g., integral x^2)">
+                <button class="btn" onclick="solveManual()">Solve</button>
+            </div>
+
+            <!-- Controls -->
+            <div class="controls">
+                <button class="btn" id="btn-camera" onclick="toggleCamera()">Start Camera</button>
+                <button class="btn" id="btn-ocr" onclick="toggleOCR()">OCR Off</button>
+            </div>
+
+            <!-- Problem display -->
+            <div class="problem-display">
+                <div class="problem-label">Detected Problem</div>
+                <div class="problem-math" id="problem-display">
+                    Point camera at equation or type above
+                </div>
+            </div>
+
+            <!-- Solution display -->
+            <div class="solution-display">
+                <div class="solution-label">Solution</div>
+                <div class="solution-math" id="solution-display">
+                    --
+                </div>
+            </div>
+
+            <!-- Steps panel -->
+            <div class="steps-panel">
+                <div class="problem-label">Step-by-Step Derivation</div>
+                <ul class="steps-list" id="steps-list">
+                    <li class="step-item">
+                        <span class="step-number">1.</span>
+                        Waiting for problem...
+                    </li>
+                </ul>
+            </div>
+
+            <!-- Graph panel (hidden by default) -->
+            <div class="graph-panel" id="graph-panel">
+                <div class="problem-label">Graph</div>
+                <canvas id="graph-canvas"></canvas>
+            </div>
+
+            <!-- Quick formulas -->
+            <div class="formula-library">
+                <div class="formula-category">Quick Formulas</div>
+                <div class="formula-item" onclick="insertFormula('KE = (1/2)*m*v^2')">Kinetic Energy</div>
+                <div class="formula-item" onclick="insertFormula('F = m*a')">Newton's 2nd Law</div>
+                <div class="formula-item" onclick="insertFormula('v = u + a*t')">Velocity</div>
+                <div class="formula-item" onclick="insertFormula('derivative x^3')">Derivative x^3</div>
+                <div class="formula-item" onclick="insertFormula('integral x^2')">Integral x^2</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // State
+        let ws = null;
+        let cameraActive = false;
+        let ocrActive = false;
+        let stream = null;
+        let frameCount = 0;
+        let lastFPSTime = Date.now();
+
+        // DOM elements
+        const webcam = document.getElementById('webcam');
+        const overlay = document.getElementById('hud-overlay');
+        const ctx = overlay.getContext('2d');
+        const wsStatus = document.getElementById('ws-status');
+        const wsLabel = document.getElementById('ws-label');
+        const fpsCounter = document.getElementById('fps-counter');
+        const latencyEl = document.getElementById('latency');
+        const problemDisplay = document.getElementById('problem-display');
+        const solutionDisplay = document.getElementById('solution-display');
+        const stepsList = document.getElementById('steps-list');
+        const equationInput = document.getElementById('equation-input');
+        const btnCamera = document.getElementById('btn-camera');
+        const btnOCR = document.getElementById('btn-ocr');
+
+        // Initialize
+        function init() {
+            resizeOverlay();
+            window.addEventListener('resize', resizeOverlay);
+            connectWebSocket();
+
+            // Enter key to solve
+            equationInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') solveManual();
+            });
+
+            // Update FPS counter
+            setInterval(updateFPS, 1000);
+        }
+
+        function resizeOverlay() {
+            overlay.width = webcam.clientWidth || 640;
+            overlay.height = webcam.clientHeight || 480;
+        }
+
+        // WebSocket connection
+        function connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.hostname}:8000/ws/physics-stream`;
+
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                wsStatus.classList.add('connected');
+                wsLabel.textContent = 'Connected';
+                console.log('Physics WebSocket connected');
+            };
+
+            ws.onclose = () => {
+                wsStatus.classList.remove('connected');
+                wsLabel.textContent = 'Disconnected';
+                console.log('Physics WebSocket disconnected');
+                // Reconnect after 3 seconds
+                setTimeout(connectWebSocket, 3000);
+            };
+
+            ws.onerror = (error) => {
+                console.error('Physics WebSocket error:', error);
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    handleMessage(data);
+                } catch (e) {
+                    console.error('Failed to parse message:', e);
+                }
+            };
+        }
+
+        // Handle incoming messages
+        function handleMessage(data) {
+            if (data.type === 'solution') {
+                displaySolution(data);
+            } else if (data.type === 'ocr_result') {
+                displayOCRResult(data);
+            } else if (data.type === 'graph') {
+                displayGraph(data);
+            } else if (data.type === 'error') {
+                displayError(data.message);
+            } else if (data.type === 'latency') {
+                latencyEl.textContent = `${data.ms} ms`;
+            }
+        }
+
+        // Display solution
+        function displaySolution(data) {
+            // Update problem display
+            if (data.problem) {
+                problemDisplay.innerHTML = data.problem;
+            }
+
+            // Update solution with LaTeX
+            if (data.latex) {
+                try {
+                    katex.render(data.latex, solutionDisplay, {
+                        throwOnError: false,
+                        displayMode: true
+                    });
+                } catch (e) {
+                    solutionDisplay.textContent = data.solution || '--';
+                }
+            } else {
+                solutionDisplay.textContent = data.solution || '--';
+            }
+
+            // Update steps
+            if (data.steps && data.steps.length > 0) {
+                stepsList.innerHTML = data.steps.map((step, i) => {
+                    // Check if step contains math
+                    const hasColon = step.includes(':');
+                    let stepContent = step;
+
+                    if (hasColon) {
+                        const parts = step.split(':');
+                        const label = parts[0];
+                        const math = parts.slice(1).join(':').trim();
+                        stepContent = `${label}:<span class="step-math">${escapeHtml(math)}</span>`;
+                    }
+
+                    return `<li class="step-item">
+                        <span class="step-number">${i + 1}.</span>
+                        ${stepContent}
+                    </li>`;
+                }).join('');
+            }
+        }
+
+        // Display OCR result
+        function displayOCRResult(data) {
+            if (data.equation) {
+                equationInput.value = data.equation;
+                problemDisplay.textContent = data.equation;
+
+                // Draw bounding boxes
+                if (data.boxes && data.boxes.length > 0) {
+                    drawOCRBoxes(data.boxes);
+                }
+            }
+        }
+
+        // Draw OCR bounding boxes
+        function drawOCRBoxes(boxes) {
+            ctx.clearRect(0, 0, overlay.width, overlay.height);
+            ctx.strokeStyle = '#00FFFF';
+            ctx.lineWidth = 2;
+
+            boxes.forEach(box => {
+                ctx.strokeRect(box.x, box.y, box.width, box.height);
+
+                if (box.text) {
+                    ctx.fillStyle = '#00FFFF';
+                    ctx.font = '12px monospace';
+                    ctx.fillText(box.text, box.x, box.y - 5);
+                }
+            });
+        }
+
+        // Display graph
+        function displayGraph(data) {
+            const graphPanel = document.getElementById('graph-panel');
+            graphPanel.classList.add('active');
+
+            if (data.image) {
+                const graphCanvas = document.getElementById('graph-canvas');
+                const graphCtx = graphCanvas.getContext('2d');
+                const img = new Image();
+                img.onload = () => {
+                    graphCanvas.width = img.width;
+                    graphCanvas.height = img.height;
+                    graphCtx.drawImage(img, 0, 0);
+                };
+                img.src = 'data:image/png;base64,' + data.image;
+            }
+        }
+
+        // Display error
+        function displayError(message) {
+            solutionDisplay.textContent = 'Error: ' + message;
+            solutionDisplay.style.color = '#FF4040';
+            setTimeout(() => {
+                solutionDisplay.style.color = '';
+            }, 3000);
+        }
+
+        // Toggle camera
+        async function toggleCamera() {
+            if (cameraActive) {
+                stopCamera();
+            } else {
+                await startCamera();
+            }
+        }
+
+        async function startCamera() {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: 'environment',
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    }
+                });
+                webcam.srcObject = stream;
+                cameraActive = true;
+                btnCamera.textContent = 'Stop Camera';
+                btnCamera.classList.add('active');
+                resizeOverlay();
+            } catch (err) {
+                console.error('Camera error:', err);
+                displayError('Failed to access camera');
+            }
+        }
+
+        function stopCamera() {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                stream = null;
+            }
+            webcam.srcObject = null;
+            cameraActive = false;
+            btnCamera.textContent = 'Start Camera';
+            btnCamera.classList.remove('active');
+
+            if (ocrActive) {
+                toggleOCR();
+            }
+        }
+
+        // Toggle OCR
+        function toggleOCR() {
+            ocrActive = !ocrActive;
+            btnOCR.textContent = ocrActive ? 'OCR On' : 'OCR Off';
+            btnOCR.classList.toggle('active', ocrActive);
+
+            if (ocrActive && cameraActive) {
+                startOCRLoop();
+            }
+        }
+
+        // OCR loop - send frames to server
+        let ocrInterval = null;
+        function startOCRLoop() {
+            if (ocrInterval) clearInterval(ocrInterval);
+
+            const canvas = document.createElement('canvas');
+            const sendCtx = canvas.getContext('2d');
+
+            ocrInterval = setInterval(() => {
+                if (!ocrActive || !cameraActive || !ws || ws.readyState !== WebSocket.OPEN) {
+                    return;
+                }
+
+                canvas.width = webcam.videoWidth || 640;
+                canvas.height = webcam.videoHeight || 480;
+                sendCtx.drawImage(webcam, 0, 0);
+
+                const frameData = canvas.toDataURL('image/jpeg', 0.8);
+                const base64Data = frameData.split(',')[1];
+
+                ws.send(JSON.stringify({
+                    type: 'ocr_frame',
+                    image: base64Data,
+                    timestamp: Date.now()
+                }));
+
+                frameCount++;
+            }, 500); // 2 FPS for OCR
+        }
+
+        // Solve equation manually
+        function solveManual() {
+            const equation = equationInput.value.trim();
+            if (!equation) return;
+
+            problemDisplay.textContent = equation;
+            wsStatus.classList.add('processing');
+
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'solve',
+                    problem: equation,
+                    timestamp: Date.now()
+                }));
+            } else {
+                // Fallback to REST API
+                fetch('/api/physics/solve', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ problem: equation })
+                })
+                .then(res => res.json())
+                .then(data => {
+                    wsStatus.classList.remove('processing');
+                    displaySolution(data);
+                })
+                .catch(err => {
+                    wsStatus.classList.remove('processing');
+                    displayError(err.message);
+                });
+            }
+        }
+
+        // Insert formula into input
+        function insertFormula(formula) {
+            equationInput.value = formula;
+            equationInput.focus();
+        }
+
+        // Update FPS counter
+        function updateFPS() {
+            const now = Date.now();
+            const elapsed = (now - lastFPSTime) / 1000;
+            const fps = Math.round(frameCount / elapsed);
+            fpsCounter.textContent = `${fps} FPS`;
+            frameCount = 0;
+            lastFPSTime = now;
+        }
+
+        // Escape HTML
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Initialize on load
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>

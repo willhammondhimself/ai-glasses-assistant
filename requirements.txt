@@ -46,3 +46,15 @@ pytest>=8.0.0
 pytest-asyncio>=0.23.0
 pytest-mock>=3.12.0
 respx>=0.20.0
+
+# Offline Mode (optional - install separately for local inference)
+# llama-cpp-python>=0.2.0  # Local LLM inference (Mistral 7B)
+# faster-whisper>=1.0.0    # Offline speech-to-text
+# piper-tts>=1.2.0         # Offline text-to-speech
+
+# Async HTTP client (for voice tool API calls)
+aiohttp>=3.9.0
+
+# PDF generation (VPIP reports)
+reportlab>=4.0.0
+matplotlib>=3.8.0

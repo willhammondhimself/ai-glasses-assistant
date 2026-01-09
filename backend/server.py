@@ -76,6 +76,12 @@ from backend.voice.status import voice_status, voice_status_handler
 # Import rate limiter middleware
 from backend.middleware import RateLimitMiddleware, rate_limiter
 
+# Import poker stream handler
+from backend.websocket.poker_stream import poker_stream_handler
+
+# Import physics stream handler
+from backend.websocket.physics_stream import physics_stream_handler
+
 # Import AR response models and formatters
 from backend.models import PaginatedResponse, ColorScheme, Slide
 from backend.formatters import MathSlideBuilder, QuantSlideBuilder
@@ -621,6 +627,147 @@ async def voice_agent_status():
 async def voice_agent_history(limit: int = 50):
     """Get voice agent state change history."""
     return {"history": voice_status.get_history(limit)}
+
+
+# ==================== Offline Mode Endpoints ====================
+
+# Global offline mode state
+_offline_mode = {"enabled": False}
+
+
+class OfflineToggleRequest(BaseModel):
+    enabled: bool
+
+
+@app.post("/offline/toggle")
+async def toggle_offline_mode(request: OfflineToggleRequest):
+    """
+    Toggle offline mode for voice and LLM processing.
+
+    When enabled, uses local models:
+    - Mistral 7B Q4 for LLM (via llama-cpp-python)
+    - faster-whisper for STT
+    - Piper for TTS
+
+    When disabled, uses cloud services (Gemini, LiveKit).
+    """
+    _offline_mode["enabled"] = request.enabled
+
+    result = {
+        "offline_mode": request.enabled,
+        "llm": {"status": "not_loaded"},
+        "voice": {"status": "not_loaded"},
+    }
+
+    if request.enabled:
+        # Initialize local models
+        try:
+            from backend.llm import get_local_llm
+            llm = get_local_llm()
+            if llm.load():
+                result["llm"] = {"status": "loaded", **llm.get_status()}
+            else:
+                result["llm"] = {"status": "unavailable", "error": "Model file not found"}
+        except ImportError as e:
+            result["llm"] = {"status": "error", "error": f"llama-cpp-python not installed: {e}"}
+        except Exception as e:
+            result["llm"] = {"status": "error", "error": str(e)}
+
+        try:
+            from backend.voice.local_voice import get_local_voice
+            voice = get_local_voice()
+            voice.toggle(True)
+            result["voice"] = {"status": "enabled", **voice.get_status()}
+        except ImportError as e:
+            result["voice"] = {"status": "error", "error": f"faster-whisper/piper not installed: {e}"}
+        except Exception as e:
+            result["voice"] = {"status": "error", "error": str(e)}
+    else:
+        # Disable local processing
+        try:
+            from backend.voice.local_voice import get_local_voice
+            get_local_voice().toggle(False)
+        except:
+            pass
+
+    return result
+
+
+@app.get("/offline/status")
+async def get_offline_status():
+    """
+    Get current offline mode status and model availability.
+
+    Returns:
+        - enabled: Whether offline mode is active
+        - llm: Local LLM status (available, loaded, model path)
+        - voice: Local voice status (STT/TTS availability)
+    """
+    result = {
+        "enabled": _offline_mode["enabled"],
+        "llm": {"available": False, "loaded": False},
+        "voice": {"enabled": False, "stt_available": False, "tts_available": False},
+    }
+
+    try:
+        from backend.llm import get_local_llm
+        llm = get_local_llm()
+        result["llm"] = llm.get_status()
+    except ImportError:
+        result["llm"]["error"] = "llama-cpp-python not installed"
+    except Exception as e:
+        result["llm"]["error"] = str(e)
+
+    try:
+        from backend.voice.local_voice import get_local_voice
+        voice = get_local_voice()
+        result["voice"] = voice.get_status()
+    except ImportError:
+        result["voice"]["error"] = "faster-whisper/piper not installed"
+    except Exception as e:
+        result["voice"]["error"] = str(e)
+
+    return result
+
+
+@app.post("/offline/llm/generate")
+async def offline_llm_generate(request: dict):
+    """
+    Generate text using local LLM (Mistral 7B).
+
+    Requires offline mode to be enabled and model to be loaded.
+
+    Request body:
+        - prompt: Text prompt
+        - max_tokens: Maximum tokens to generate (default: 256)
+        - temperature: Sampling temperature (default: 0.7)
+        - system_prompt: Optional system prompt
+    """
+    if not _offline_mode["enabled"]:
+        return {"error": "Offline mode not enabled. Call POST /offline/toggle first."}
+
+    prompt = request.get("prompt", "")
+    if not prompt:
+        return {"error": "Prompt required"}
+
+    try:
+        from backend.llm import get_local_llm
+        llm = get_local_llm()
+
+        if not llm.is_available:
+            return {"error": "Model file not found. Download Mistral 7B GGUF."}
+
+        response = llm.generate(
+            prompt=prompt,
+            max_tokens=request.get("max_tokens", 256),
+            temperature=request.get("temperature", 0.7),
+            system_prompt=request.get("system_prompt"),
+        )
+
+        return {"response": response, "model": llm.model_path}
+
+    except Exception as e:
+        return {"error": str(e)}
 
 
 @app.websocket("/ws/voice-status")
@@ -1667,6 +1814,84 @@ async def hud_websocket(websocket: WebSocket):
     - {"type": "pong"}
     """
     await hud_handler.handle_connection(websocket, "hud:global")
+
+
+@app.websocket("/ws/poker-stream")
+async def poker_stream_websocket(websocket: WebSocket):
+    """
+    WebSocket endpoint for real-time poker HUD with webcam OCR.
+
+    Streams webcam frames at 5fps for card/pot detection via Gemini Vision.
+    Returns EV table with bet sizing options and VPIP leak detection.
+
+    Protocol:
+    Client sends:
+    - {"type": "start_stream"} - Start webcam OCR mode
+    - {"type": "stop_stream"} - Stop streaming
+    - {"type": "frame", "image": "<base64>"} - Send webcam frame
+    - {"type": "manual_input", "hole_cards": "AhKd", "board": "QsJhTc", "pot": 100, "bet": 25}
+    - {"type": "vpip_action", "action": "fold|call|raise"}
+    - {"type": "get_vpip_stats"}
+
+    Server sends:
+    - {"type": "connected", "message": "Poker HUD ready"}
+    - {"type": "table_state", "data": {...}} - OCR detected cards/pot/bets
+    - {"type": "ev_table", "data": {...}} - EV calculations for bet sizes
+    - {"type": "vpip_stats", "data": {...}} - VPIP leak analysis
+    - {"type": "error", "message": "..."}
+    """
+    await poker_stream_handler.handle_connection(websocket)
+
+
+@app.websocket("/ws/physics-stream")
+async def physics_stream_websocket(websocket: WebSocket):
+    """
+    WebSocket endpoint for real-time physics HUD with equation OCR.
+
+    Supports equation solving, step-by-step derivations, and function graphing.
+
+    Protocol:
+    Client sends:
+    - {"type": "solve", "problem": "integral x^2"} - Solve equation
+    - {"type": "ocr_frame", "image": "<base64>"} - Send camera frame for OCR
+    - {"type": "graph", "function": "x^2"} - Request function graph
+    - {"type": "formula", "name": "kinetic_energy"} - Look up formula
+
+    Server sends:
+    - {"type": "connected", "message": "Physics HUD ready"}
+    - {"type": "solution", "problem": "...", "solution": "...", "latex": "...", "steps": [...]}
+    - {"type": "ocr_result", "equation": "...", "boxes": [...]}
+    - {"type": "graph", "image": "<base64>"}
+    - {"type": "error", "message": "..."}
+    """
+    await physics_stream_handler.handle_connection(websocket)
+
+
+@app.post("/api/physics/solve")
+async def physics_solve_api(request: Request):
+    """REST API endpoint for physics problem solving (fallback when WebSocket unavailable)."""
+    from backend.physics.engine import PhysicsEngine
+
+    data = await request.json()
+    problem = data.get("problem", "")
+
+    if not problem:
+        return {"error": "No problem provided"}
+
+    engine = PhysicsEngine()
+    solution = await engine.solve(problem)
+
+    return {
+        "type": "solution",
+        "problem": solution.problem,
+        "problem_type": solution.problem_type.value,
+        "solution": solution.solution,
+        "latex": solution.solution_latex,
+        "steps": solution.steps,
+        "numeric_value": solution.numeric_value,
+        "method": solution.method,
+        "error": solution.error
+    }
 
 
 @app.get("/ws/status")
