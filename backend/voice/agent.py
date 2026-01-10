@@ -91,7 +91,7 @@ RULES:
 @dataclass
 class VoiceConfig:
     """Configuration for WHAM voice agent."""
-    model: str = "gemini-2.5-flash"  # Gemini 2.5 Flash for Live API
+    model: str = "gemini-2.5-flash-native-audio-preview-12-2025"  # Best native audio model
     voice: str = "Puck"  # Gemini voice preset: Puck, Charon, Kore, Fenrir, Aoede
     require_wake_word: bool = False  # If True, only respond to "WHAM, ..." queries
     wake_word: str = "wham"  # The wake word to listen for
